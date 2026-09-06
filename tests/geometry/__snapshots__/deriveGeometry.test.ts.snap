@@ -1,0 +1,207 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`deriveGeometry > is a snapshot-stable derivation of the default model 1`] = `
+{
+  "bounds": {
+    "max": [
+      26,
+      15,
+      2,
+    ],
+    "min": [
+      -2,
+      -1,
+      -38,
+    ],
+  },
+  "boxes": [
+    {
+      "center": [
+        12,
+        -0.16666666666666666,
+        -18,
+      ],
+      "entityId": "foundation",
+      "id": "slab",
+      "kind": "slab",
+      "rotation": [
+        0,
+        0,
+        0,
+      ],
+      "size": [
+        24,
+        0.3333333333333333,
+        36,
+      ],
+    },
+    {
+      "center": [
+        12,
+        5,
+        -0,
+      ],
+      "entityId": "wall_ext_s",
+      "id": "panel_wall_ext_s",
+      "kind": "wallPanel",
+      "rotation": [
+        0,
+        0,
+        0,
+      ],
+      "size": [
+        24,
+        10,
+        0.4583333333333333,
+      ],
+    },
+    {
+      "center": [
+        24,
+        5,
+        -18,
+      ],
+      "entityId": "wall_ext_e",
+      "id": "panel_wall_ext_e",
+      "kind": "wallPanel",
+      "rotation": [
+        0,
+        1.5707963267948966,
+        0,
+      ],
+      "size": [
+        36,
+        10,
+        0.4583333333333333,
+      ],
+    },
+    {
+      "center": [
+        12,
+        5,
+        -36,
+      ],
+      "entityId": "wall_ext_n",
+      "id": "panel_wall_ext_n",
+      "kind": "wallPanel",
+      "rotation": [
+        0,
+        3.141592653589793,
+        0,
+      ],
+      "size": [
+        24,
+        10,
+        0.4583333333333333,
+      ],
+    },
+    {
+      "center": [
+        0,
+        5,
+        -18,
+      ],
+      "entityId": "wall_ext_w",
+      "id": "panel_wall_ext_w",
+      "kind": "wallPanel",
+      "rotation": [
+        0,
+        -1.5707963267948966,
+        0,
+      ],
+      "size": [
+        36,
+        10,
+        0.4583333333333333,
+      ],
+    },
+    {
+      "center": [
+        5.5,
+        11.833333333333334,
+        -18,
+      ],
+      "entityId": "roof",
+      "id": "roof_w",
+      "kind": "roofPlane",
+      "rotation": [
+        0,
+        0,
+        0.3217505543966422,
+      ],
+      "size": [
+        13.703203194062977,
+        0.5,
+        38,
+      ],
+    },
+    {
+      "center": [
+        18.5,
+        11.833333333333334,
+        -18,
+      ],
+      "entityId": "roof",
+      "id": "roof_e",
+      "kind": "roofPlane",
+      "rotation": [
+        0,
+        0,
+        -0.3217505543966422,
+      ],
+      "size": [
+        13.703203194062977,
+        0.5,
+        38,
+      ],
+    },
+  ],
+  "polygons": [
+    {
+      "entityId": "wall_ext_s",
+      "id": "gable_s",
+      "kind": "gableEnd",
+      "vertices": [
+        [
+          0,
+          10,
+          -0,
+        ],
+        [
+          24,
+          10,
+          -0,
+        ],
+        [
+          12,
+          14,
+          -0,
+        ],
+      ],
+    },
+    {
+      "entityId": "wall_ext_n",
+      "id": "gable_n",
+      "kind": "gableEnd",
+      "vertices": [
+        [
+          24,
+          10,
+          -36,
+        ],
+        [
+          0,
+          10,
+          -36,
+        ],
+        [
+          12,
+          14,
+          -36,
+        ],
+      ],
+    },
+  ],
+  "ridgeHeightFt": 14,
+}
+`;

@@ -1,0 +1,109 @@
+// Barn Designer — relational shell around the JSON BuildingModel (SPEC §10.3, ADR-0001).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  clerkId   String    @unique
+  email     String
+  name      String?
+  createdAt DateTime  @default(now())
+  projects  Project[]
+}
+
+model Project {
+  id               String           @id @default(cuid())
+  ownerId          String
+  owner            User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name             String
+  description      String?
+  thumbnailUrl     String?
+  /// Autosaved working copy of the BuildingModel (debounced PATCH). Versions are explicit snapshots.
+  draftModel       Json
+  schemaVersion    Int
+  currentVersionId String?
+  archived         Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  versions         ProjectVersion[]
+  shares           ShareLink[]
+  comments         Comment[]
+
+  @@index([ownerId])
+}
+
+model ProjectVersion {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number        Int
+  label         String?
+  model         Json
+  schemaVersion Int
+  /// Auto-generated diff summary vs. the previous version (P1).
+  summary       String?
+  createdById   String
+  createdAt     DateTime @default(now())
+
+  @@unique([projectId, number])
+}
+
+model ShareLink {
+  id           String    @id @default(cuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  token        String    @unique
+  /// viewer | commenter
+  role         String    @default("viewer")
+  passwordHash String?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([projectId])
+}
+
+model Comment {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versionId    String?
+  authorName   String
+  authorEmail  String?
+  authorUserId String?
+  body         String
+  /// { entityId?, point3d?, plan2d? }
+  anchor       Json?
+  resolved     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model Template {
+  id           String  @id
+  name         String
+  description  String
+  category     String
+  model        Json
+  thumbnailUrl String?
+  sortOrder    Int     @default(0)
+}
+
+model MaterialPrice {
+  id          String   @id @default(cuid())
+  userId      String?
+  sku         String
+  description String
+  unit        String
+  unitCost    Decimal  @db.Decimal(12, 2)
+  source      String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, sku])
+}
