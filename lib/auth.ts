@@ -30,7 +30,11 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEV_AUTH !== "1") {
       return null;
     }
-    return DEV_USER;
+    // Ensure the dev user exists as a real User row when a database is present,
+    // so Project.ownerId satisfies its foreign key.
+    const { getProjectRepo } = await import("@/lib/repo");
+    const dbUser = await getProjectRepo().upsertUser({ clerkId: DEV_USER.clerkId, email: DEV_USER.email, name: DEV_USER.name });
+    return { ...DEV_USER, id: dbUser.id };
   }
   const { currentUser } = await import("@clerk/nextjs/server");
   const u = await currentUser();
