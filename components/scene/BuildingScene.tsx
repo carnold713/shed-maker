@@ -16,6 +16,7 @@ type Group = { key: string; boxes: BoxMember[]; color: string; roughness: number
 /** Selection id for a box: openings select the opening, skins select the footprint, framing selects the member. */
 function selectionIdFor(b: BoxMember): string {
   if (b.kind === "wallSkin") return "footprint";
+  if (b.kind === "floor" || b.kind === "partition" || b.kind === "grille" || b.kind === "stallDoor") return b.entityId;
   if (b.kind === "framing") return b.id;
   if (b.kind === "roofPlane" || b.kind === "slab") return b.entityId;
   return b.entityId; // opening parts -> opening id
@@ -23,6 +24,7 @@ function selectionIdFor(b: BoxMember): string {
 
 function targetFor(b: BoxMember): ContextTarget["kind"] {
   if (b.kind === "wallSkin") return "wall";
+  if (b.kind === "floor" || b.kind === "partition" || b.kind === "grille" || b.kind === "stallDoor") return "zone";
   if (b.kind === "framing") return "member";
   if (b.kind === "roofPlane") return "roof";
   if (b.kind === "slab") return "footprint";
@@ -49,6 +51,11 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
       glass: { color: "#9fc4d8", roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.45 },
       door: { color: white ? "#e2e2df" : materials.trimColor, roughness: 0.6, metalness: 0.1 },
       trim: { color: white ? "#efefec" : materials.trimColor, roughness: 0.6, metalness: 0.05 },
+      grille: { color: white ? "#9a9a96" : "#3b3f44", roughness: 0.5, metalness: 0.6, transparent: true, opacity: 0.35 },
+      mats: { color: white ? "#c9c9c6" : "#3d3b39", roughness: 0.95, metalness: 0 },
+      gravel: { color: white ? "#d6d6d2" : "#a8a394", roughness: 1, metalness: 0 },
+      dirt: { color: white ? "#d3d0ca" : "#8a6f52", roughness: 1, metalness: 0 },
+      floorWood: { color: white ? "#e0ddd6" : "#a67c4f", roughness: 0.8, metalness: 0 },
     };
     const by = new Map<string, Group>();
     for (const b of geometry.boxes) {
@@ -70,7 +77,7 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
       e.nativeEvent.preventDefault();
       const kind = targetFor(b);
       const id = kind === "wall" ? b.entityId : kind === "member" ? b.id : kind === "roof" ? "roof" : kind === "footprint" ? "footprint" : b.entityId;
-      if (kind === "opening" || kind === "member" || kind === "wall") select(kind === "wall" ? "footprint" : id);
+      if (kind === "opening" || kind === "member" || kind === "wall" || kind === "zone") select(kind === "wall" ? "footprint" : id);
       openContextMenu({ kind, id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY, from: "3d" });
     },
     [openContextMenu, select],

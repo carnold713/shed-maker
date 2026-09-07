@@ -8,6 +8,7 @@ import type { BuildingModel, Frame, FrameSystem, Opening, OpeningType, Roof } fr
 import { syncExteriorWalls, wallLengthFt } from "./walls";
 import { OPENING_PRESETS } from "./openings";
 import { newId } from "./ids";
+import { syncOutsideDoors } from "./zones";
 
 export const MIN_DIM_FT = 4;
 export const MAX_DIM_FT = 200;
@@ -26,7 +27,7 @@ export function setFootprintRect(model: BuildingModel, wFt: number, dFt: number)
   const w = clamp(Number.isFinite(wFt) ? wFt : MIN_DIM_FT, MIN_DIM_FT, MAX_DIM_FT);
   const d = clamp(Number.isFinite(dFt) ? dFt : MIN_DIM_FT, MIN_DIM_FT, MAX_DIM_FT);
   if (model.footprint.kind === "rect" && model.footprint.wFt === w && model.footprint.dFt === d) return model;
-  return touch(syncExteriorWalls({ ...model, footprint: { kind: "rect", wFt: w, dFt: d } }));
+  return touch(syncOutsideDoors(syncExteriorWalls({ ...model, footprint: { kind: "rect", wFt: w, dFt: d } })));
 }
 
 export function setEaveHeight(model: BuildingModel, heightFt: number): BuildingModel {

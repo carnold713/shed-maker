@@ -72,9 +72,35 @@ function useKeyboardShortcuts() {
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
         const sel = ps.selection;
         const opening = sel ? ps.model?.openings.find((o) => o.id === sel) : undefined;
+        const zone = sel ? ps.model?.zones.find((z) => z.id === sel) : undefined;
         if ((e.key === "Delete" || e.key === "Backspace") && opening) {
           e.preventDefault();
           ps.removeOpening(opening.id);
+          return;
+        }
+        if ((e.key === "Delete" || e.key === "Backspace") && zone) {
+          e.preventDefault();
+          ps.removeZone(zone.id);
+          return;
+        }
+        if (zone && e.key.toLowerCase() === "d") {
+          e.preventDefault();
+          ps.duplicateZone(zone.id, ps.model?.roof.ridgeAxis === "ns" ? "n" : "e");
+          return;
+        }
+        if (zone && e.key.startsWith("Arrow")) {
+          e.preventDefault();
+          const step = e.shiftKey ? 4 : 1;
+          const xs = zone.polygon.map((p) => p.x);
+          const ys = zone.polygon.map((p) => p.y);
+          const x = Math.min(...xs) + (e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0);
+          const y = Math.min(...ys) + (e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0);
+          ps.moveZone(zone.id, Math.max(0, x), Math.max(0, y), vs.autoGrow);
+          return;
+        }
+        const toolKeys: Record<string, "select" | "pen" | "aisle" | "room" | "erase"> = { v: "select", p: "pen", a: "aisle", r: "room", e: "erase" };
+        if (toolKeys[e.key.toLowerCase()]) {
+          vs.setTool(toolKeys[e.key.toLowerCase()]);
           return;
         }
         if (opening && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
@@ -84,7 +110,8 @@ function useKeyboardShortcuts() {
           return;
         }
         if (e.key === "Escape") {
-          ps.select(null);
+          if (vs.tool !== "select") vs.setTool("select");
+          else ps.select(null);
           vs.closeContextMenu();
           return;
         }

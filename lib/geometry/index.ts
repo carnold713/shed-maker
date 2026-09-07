@@ -4,6 +4,8 @@ import { wallRotation, type WallFrame } from "@/lib/framing/wallFrame";
 import { ROOF_PANEL_THICK_FT } from "@/lib/framing/roofMath";
 import { SLIDING_LEAF_OVERLAP_FT, SLIDING_LEAF_STANDOFF_FT } from "@/lib/model/openings";
 import { planToWorld } from "./frame";
+import { derivePartitions } from "@/lib/interior/partitions";
+import { zoneRect } from "@/lib/model/zones";
 import type { BoxMember, Geometry, PolygonMember, Vec3 } from "./types";
 
 export * from "./types";
@@ -128,6 +130,9 @@ export function deriveGeometry(model: BuildingModel, framing: FramingSet = deriv
     }
   }
 
+  // ---- Interior: zone floors and partitions derived from zone edges (SPEC §5.3, §24)
+  boxes.push(...interiorGeometry(model));
+
   const pad = Math.max(rp.ovE, rp.ovG) + 1;
   const embed = model.frame.post.foundation === "embedded" ? model.frame.post.embedIn / 12 : 0;
   return {
@@ -242,6 +247,82 @@ function openingGeometry(f: WallFrame, o: Opening): BoxMember[] {
     out.push(mk(`${o.id}_leaf_top`, "doorLeaf", "door", u0 + jambT, u1 - jambT, split + 0.01, h1 - jambT, n0, n0 + leafT));
   } else {
     out.push(mk(`${o.id}_leaf`, "doorLeaf", "door", u0 + jambT, u1 - jambT, h0, h1 - jambT, n0, n0 + leafT));
+  }
+  return out;
+}
+
+/** Partition thickness: 2×6 T&G kick-wall between posts ≈ 1½"; stud partitions 4½". */
+const STALL_PARTITION_THICK_FT = 1.5 / 12;
+const FULL_PARTITION_THICK_FT = 4.5 / 12;
+
+export function interiorGeometry(model: BuildingModel): BoxMember[] {
+  const out: BoxMember[] = [];
+  // Floor tints per zone, a hair above the slab.
+  for (const z of model.zones) {
+    const r = zoneRect(z);
+    const material: BoxMember["material"] = z.flooring === "concreteMats" ? "mats" : z.flooring === "gravel" ? "gravel" : z.flooring === "dirt" ? "dirt" : z.flooring === "wood" ? "floorWood" : "concrete";
+    out.push({
+      id: `floor_${z.id}`,
+      kind: "floor",
+      layer: "interior",
+      entityId: z.id,
+      material,
+      center: planToWorld(r.x + r.w / 2, r.y + r.d / 2, 0.01),
+      size: [r.w, 0.02, r.d],
+      rotation: [0, 0, 0],
+    });
+  }
+  for (const p of derivePartitions(model)) {
+    const vertical = Math.abs(p.x1 - p.x0) < 1e-9; // runs along plan y
+    const thick = p.kind === "full" ? FULL_PARTITION_THICK_FT : STALL_PARTITION_THICK_FT;
+    const cx = (p.x0 + p.x1) / 2;
+    const cy = (p.y0 + p.y1) / 2;
+    // Split the length around doors.
+    const segs: [number, number][] = [];
+    let cursor = 0;
+    for (const d of [...p.doors].sort((a, b) => a.u - b.u)) {
+      if (d.u > cursor) segs.push([cursor, d.u]);
+      cursor = d.u + d.widthFt;
+    }
+    if (cursor < p.lengthFt) segs.push([cursor, p.lengthFt]);
+    const place = (u0: number, u1: number, h0: number, h1: number, kind: BoxMember["kind"], material: BoxMember["material"], suffix: string): BoxMember => {
+      const mid = (u0 + u1) / 2;
+      const x = vertical ? cx : p.x0 + mid;
+      const y = vertical ? p.y0 + mid : cy;
+      return {
+        id: `${p.id}_${suffix}`,
+        kind,
+        layer: "interior",
+        entityId: p.zones[0]?.id ?? p.zones[1]?.id ?? "interior",
+        material,
+        center: planToWorld(x, y, (h0 + h1) / 2),
+        size: vertical ? [thick, h1 - h0, u1 - u0] : [u1 - u0, h1 - h0, thick],
+        rotation: [0, 0, 0],
+      };
+    };
+    for (const [i, [u0, u1]] of segs.entries()) {
+      out.push(place(u0, u1, 0, p.kickFt, "partition", p.kind === "full" ? "wood" : "floorWood", `kick${i}`));
+      if (p.topFt > p.kickFt + 1e-6) out.push(place(u0, u1, p.kickFt, p.topFt, "grille", "grille", `grille${i}`));
+    }
+    // Doors: sliding stall door leaf (solid to kick height, grille above), hung on the aisle side.
+    for (const [i, d] of p.doors.entries()) {
+      const leafW = d.widthFt + 0.25;
+      const u0 = d.u - 0.125;
+      const offsetN = thick / 2 + 0.05; // stands off the partition face
+      const mid = u0 + leafW / 2;
+      const x = vertical ? cx + offsetN : p.x0 + mid;
+      const y = vertical ? p.y0 + mid : cy + offsetN;
+      out.push({
+        id: `${p.id}_door${i}`,
+        kind: "stallDoor",
+        layer: "interior",
+        entityId: d.zoneId,
+        material: "door",
+        center: planToWorld(x, y, Math.min(p.topFt, 7) / 2),
+        size: vertical ? [1.5 / 12, Math.min(p.topFt, 7), leafW] : [leafW, Math.min(p.topFt, 7), 1.5 / 12],
+        rotation: [0, 0, 0],
+      });
+    }
   }
   return out;
 }

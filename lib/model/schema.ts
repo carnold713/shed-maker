@@ -172,6 +172,8 @@ export const Opening = z.object({
   hardware: z.array(z.string()).default([]),
   /** Display tag on plans (D1, W3). Assigned by the drawing layer if absent. */
   tag: z.string().optional(),
+  /** Set when the opening belongs to a pen's outside access; it follows the pen (SPEC §18.2). */
+  zoneId: Id.optional(),
 });
 export type Opening = z.infer<typeof Opening>;
 
@@ -275,6 +277,8 @@ export const Zone = z.object({
   flooring: z
     .enum(["concrete", "concreteMats", "gravel", "dirt", "wood"])
     .default("concrete"),
+  /** Pen opens to the outside through a Dutch door on the exterior wall it touches (SPEC §18.2). */
+  outsideAccess: z.boolean().default(false),
 });
 export type Zone = z.infer<typeof Zone>;
 

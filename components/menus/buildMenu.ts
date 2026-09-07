@@ -6,6 +6,9 @@ import { DOOR_TYPES, OPENING_PRESETS } from "@/lib/model/openings";
 import type { OpeningType } from "@/lib/model/schema";
 import { formatFtIn } from "@/lib/units";
 import { getRule } from "@/rules";
+import { PEN_SPECIES, SPECIES_PRESETS } from "@/rules/animals/presets";
+import { ROOM_PRESETS, ZONE_TYPE_LABEL, defaultPenSize, zoneRect } from "@/lib/model/zones";
+import type { Species, ZoneType } from "@/lib/model/schema";
 
 /**
  * Context-menu definitions (SPEC §21.1), keyed by what was right-clicked.
@@ -147,7 +150,67 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
         { separator: true, label: "" },
         ...viewItems,
       ];
-    case "empty":
+    case "zone": {
+      const z = model.zones.find((x) => x.id === t.id);
+      if (!z) return [];
+      const r = zoneRect(z);
+      const alongDir = model.roof.ridgeAxis === "ns" ? "n" : "e";
+      const preset = z.species ? SPECIES_PRESETS[z.species] : null;
+      return [
+        ...(z.type === "pen" || z.type === "kidding"
+          ? [{ label: "Species", children: PEN_SPECIES.map((sp) => ({ label: `${z.species === sp ? "✓ " : "   "}${SPECIES_PRESETS[sp].label}`, onSelect: () => ps.updateZone(z.id, { species: sp }) })) }]
+          : []),
+        { label: "Change type", children: (["pen", "aisle", "tack", "feed", "hay", "wash", "equipment", "office", "utility", "open"] as ZoneType[]).filter((x) => x !== z.type).map((type) => ({ label: ZONE_TYPE_LABEL[type], onSelect: () => ps.updateZone(z.id, { type }) })) },
+        ...(preset
+          ? [{ label: "Resize to", children: [preset.minPen, preset.recommendedPen, [14, 16] as [number, number], [16, 16] as [number, number]].map(([w, d]) => ({ label: `${w}×${d}`, onSelect: () => ps.resizeZone(z.id, { ...r, w, d }, vs.autoGrow) })) }]
+          : []),
+        ...(z.type === "pen" ? [{ label: `${z.outsideAccess ? "✓ " : "   "}Outside access (Dutch door)`, onSelect: () => ps.setOutsideAccess(z.id, !z.outsideAccess) }] : []),
+        { separator: true, label: "" },
+        { label: "Duplicate", onSelect: () => ps.duplicateZone(z.id, alongDir), shortcut: "D" },
+        { label: "Array", children: [2, 3, 4, 6].map((n) => ({ label: `${n} more along the bays`, onSelect: () => ps.arrayZone(z.id, n, alongDir) })) },
+        { label: "Split", children: [
+          { label: "In halves", onSelect: () => ps.splitZone(z.id, 2) },
+          { label: "In thirds", onSelect: () => ps.splitZone(z.id, 3) },
+          { label: "Halves across", onSelect: () => ps.splitZone(z.id, 2, r.w >= r.d ? "y" : "x") },
+        ] },
+        { separator: true, label: "" },
+        { label: "Properties", onSelect: () => ps.select(z.id) },
+        { label: "Delete", onSelect: () => ps.removeZone(z.id), danger: true, shortcut: "Del" },
+      ];
+    }
+    case "empty": {
+      const at = (w: number, d: number) => ({ x: (t.planX ?? 0) - w / 2, y: (t.planY ?? 0) - d / 2, w, d });
+      return [
+        {
+          label: "Add pen here",
+          children: PEN_SPECIES.map((sp: Species) => {
+            const [w, d] = defaultPenSize(sp);
+            return { label: `${SPECIES_PRESETS[sp].label} ${w}×${d}`, onSelect: () => { const id = ps.addZone({ type: "pen", species: sp, rect: at(w, d), autoGrow: vs.autoGrow }); if (id) ps.select(id); } };
+          }),
+        },
+        {
+          label: "Add room here",
+          children: (["tack", "feed", "hay", "wash", "equipment", "office", "utility"] as ZoneType[]).map((type) => {
+            const [w, d] = ROOM_PRESETS[type] ?? [12, 12];
+            return { label: ZONE_TYPE_LABEL[type], onSelect: () => { const id = ps.addZone({ type, rect: at(w, d), autoGrow: vs.autoGrow }); if (id) ps.select(id); } };
+          }),
+        },
+        { label: "Add aisle here", onSelect: () => { const ns = model.roof.ridgeAxis === "ns"; const fp = model.footprint.kind === "rect" ? model.footprint : { wFt: 24, dFt: 36 }; const id = ps.addZone({ type: "aisle", rect: ns ? { x: (t.planX ?? 0) - 6, y: 0, w: 12, d: fp.dFt } : { x: 0, y: (t.planY ?? 0) - 6, w: fp.wFt, d: 12 }, autoGrow: vs.autoGrow }); if (id) ps.select(id); } },
+        { separator: true, label: "" },
+        {
+          label: "Fill with layout",
+          children: [
+            { label: `Center aisle (${SPECIES_PRESETS[vs.toolSpecies as Species]?.label ?? "horse"})`, onSelect: () => ps.applyLayout("centerAisle", { species: vs.toolSpecies as Species }) },
+            { label: "Center aisle + tack/feed", onSelect: () => ps.applyLayout("centerAisle", { species: vs.toolSpecies as Species, supportBays: 2 }) },
+            { label: "Shed row (outside doors)", onSelect: () => ps.applyLayout("shedRow", { species: vs.toolSpecies as Species }) },
+            { label: "Clear interior", onSelect: () => ps.applyLayout("clear"), danger: true },
+          ],
+        },
+        { label: "Fit building to interior", onSelect: () => ps.fitEnvelopeToZones(), disabled: model.zones.length === 0 },
+        { separator: true, label: "" },
+        ...viewItems,
+      ];
+    }
     case "viewport":
     default:
       return viewItems;

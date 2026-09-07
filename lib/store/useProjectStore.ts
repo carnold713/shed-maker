@@ -6,6 +6,8 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { shallow } from "zustand/shallow";
 import type { BuildingModel, Frame, FrameSystem, Opening, Roof } from "@/lib/model/schema";
 import * as cmd from "@/lib/model/commands";
+import * as zc from "@/lib/model/zones";
+import { applyLayout, type LayoutOptions, type LayoutPattern } from "@/lib/model/layouts";
 import { newId } from "@/lib/model/ids";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
@@ -41,6 +43,19 @@ export interface ProjectState {
   centerOpening: (id: string, on?: "wall" | "bay") => void;
   /** Run `fn` as one undo step (drags call many commands). */
   transaction: (fn: () => void) => void;
+
+  addZone: (input: zc.AddZoneInput) => string | null;
+  updateZone: (id: string, patch: Parameters<typeof zc.updateZone>[2]) => void;
+  moveZone: (id: string, x: number, y: number, autoGrow?: boolean) => void;
+  resizeZone: (id: string, rect: zc.Rect, autoGrow?: boolean) => void;
+  removeZone: (id: string) => void;
+  duplicateZone: (id: string, dir?: "e" | "w" | "n" | "s") => void;
+  arrayZone: (id: string, count: number, dir?: "e" | "w" | "n" | "s") => void;
+  splitZone: (id: string, parts?: number, axis?: "x" | "y") => void;
+  setOutsideAccess: (id: string, on: boolean) => void;
+  growToFitZones: () => void;
+  fitEnvelopeToZones: () => void;
+  applyLayout: (pattern: LayoutPattern, opts?: LayoutOptions) => void;
 }
 
 type FramePatch = Partial<{ [K in keyof Frame]: Frame[K] extends object ? Partial<Frame[K]> : Frame[K] }>;
@@ -92,6 +107,25 @@ export const useProjectStore = create<ProjectState>()(
         },
         flipOpeningSwing: (id) => apply((m) => cmd.flipOpeningSwing(m, id)),
         centerOpening: (id, on = "wall") => apply((m) => cmd.centerOpening(m, id, on)),
+        addZone: (input) => {
+          const id = input.id ?? newId("zone");
+          apply((m) => zc.addZone(m, { ...input, id }));
+          return get().model?.zones.some((z) => z.id === id) ? id : null;
+        },
+        updateZone: (id, patch) => apply((m) => zc.updateZone(m, id, patch)),
+        moveZone: (id, x, y, autoGrow) => apply((m) => zc.moveZone(m, id, x, y, { autoGrow })),
+        resizeZone: (id, rect, autoGrow) => apply((m) => zc.resizeZone(m, id, rect, { autoGrow })),
+        removeZone: (id) => {
+          apply((m) => zc.removeZone(m, id));
+          if (get().selection === id) set({ selection: null });
+        },
+        duplicateZone: (id, dir) => apply((m) => zc.duplicateZone(m, id, dir)),
+        arrayZone: (id, count, dir) => apply((m) => zc.arrayZone(m, id, count, dir)),
+        splitZone: (id, parts, axis) => apply((m) => zc.splitZone(m, id, parts, axis)),
+        setOutsideAccess: (id, on) => apply((m) => zc.setOutsideAccess(m, id, on)),
+        growToFitZones: () => apply((m) => zc.growToFitZones(m)),
+        fitEnvelopeToZones: () => apply((m) => zc.fitEnvelopeToZones(m)),
+        applyLayout: (pattern, opts) => apply((m) => applyLayout(m, pattern, opts)),
         transaction: (fn) => {
           const temporal = useProjectStore.temporal.getState();
           const start = get().model;

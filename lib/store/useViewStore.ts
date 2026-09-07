@@ -5,7 +5,7 @@ import type { Layer } from "@/lib/framing/types";
 
 export type ViewPreset = "exterior" | "framing" | "dollhouse" | "interior" | "plan";
 
-export const ALL_LAYERS: Layer[] = ["slab", "foundation", "framing", "roofStructure", "roofing", "siding", "openings"];
+export const ALL_LAYERS: Layer[] = ["slab", "foundation", "framing", "roofStructure", "roofing", "siding", "openings", "interior"];
 
 export const LAYER_LABEL: Record<Layer, string> = {
   slab: "Slab",
@@ -15,20 +15,26 @@ export const LAYER_LABEL: Record<Layer, string> = {
   roofing: "Roofing",
   siding: "Siding",
   openings: "Doors & windows",
+  interior: "Pens & partitions",
 };
 
 const PRESET_LAYERS: Record<ViewPreset, Layer[]> = {
-  exterior: ["slab", "roofing", "siding", "openings"],
-  framing: ["slab", "foundation", "framing", "roofStructure"],
-  dollhouse: ["slab", "framing", "siding", "openings"],
-  interior: ["slab", "framing", "roofStructure", "siding", "openings"],
-  plan: ["slab", "framing", "siding", "openings"],
+  exterior: ["slab", "roofing", "siding", "openings", "interior"],
+  framing: ["slab", "foundation", "framing", "roofStructure", "interior"],
+  dollhouse: ["slab", "framing", "siding", "openings", "interior"],
+  interior: ["slab", "framing", "roofStructure", "siding", "openings", "interior"],
+  plan: ["slab", "framing", "siding", "openings", "interior"],
 };
 
 export type RenderMode = "realistic" | "white";
 
+export type PlanTool = "select" | "pen" | "aisle" | "room" | "erase";
+
 export interface ContextTarget {
-  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport";
+  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone";
+  /** Plan position under the cursor, feet (empty-space menus). */
+  planX?: number;
+  planY?: number;
   id?: string;
   /** For walls: position along the wall under the cursor, feet. */
   uFt?: number;
@@ -49,6 +55,12 @@ export interface ViewState {
   fitNonce: number;
   contextMenu: ContextTarget | null;
   hovered: string | null;
+  /** Plan drawing tool (SPEC §21.2 hotkeys P/A/R). */
+  tool: PlanTool;
+  toolSpecies: string;
+  toolRoomType: string;
+  /** Grow the building automatically when a zone lands outside it (SPEC §18.2 "Just do it"). */
+  autoGrow: boolean;
 
   setPreset: (p: ViewPreset) => void;
   toggleLayer: (l: Layer) => void;
@@ -59,6 +71,10 @@ export interface ViewState {
   openContextMenu: (t: ContextTarget) => void;
   closeContextMenu: () => void;
   setHovered: (id: string | null) => void;
+  setTool: (t: PlanTool) => void;
+  setToolSpecies: (s: string) => void;
+  setToolRoomType: (t: string) => void;
+  setAutoGrow: (v: boolean) => void;
 }
 
 export const useViewStore = create<ViewState>()((set) => ({
@@ -69,6 +85,10 @@ export const useViewStore = create<ViewState>()((set) => ({
   fitNonce: 0,
   contextMenu: null,
   hovered: null,
+  tool: "select",
+  toolSpecies: "horse",
+  toolRoomType: "tack",
+  autoGrow: true,
 
   setPreset: (preset) =>
     set({
@@ -90,4 +110,8 @@ export const useViewStore = create<ViewState>()((set) => ({
   openContextMenu: (contextMenu) => set({ contextMenu }),
   closeContextMenu: () => set({ contextMenu: null }),
   setHovered: (hovered) => set({ hovered }),
+  setTool: (tool) => set({ tool }),
+  setToolSpecies: (toolSpecies) => set({ toolSpecies, tool: "pen" }),
+  setToolRoomType: (toolRoomType) => set({ toolRoomType, tool: "room" }),
+  setAutoGrow: (autoGrow) => set({ autoGrow }),
 }));

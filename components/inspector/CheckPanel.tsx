@@ -18,6 +18,18 @@ function runFix(f: Finding) {
       return s.setEaveHeight(Number(args.ft));
     case "centerOpeningInBay":
       return s.centerOpening(String(args.id), "bay");
+    case "growToFitZones":
+      return s.growToFitZones();
+    case "setOutsideAccess":
+      return s.setOutsideAccess(String(args.id), true);
+    case "resizeZoneTo": {
+      const id = String(args.id);
+      const z = s.model?.zones.find((x) => x.id === id);
+      if (!z) return;
+      const xs = z.polygon.map((p) => p.x);
+      const ys = z.polygon.map((p) => p.y);
+      return s.resizeZone(id, { x: Math.min(...xs), y: Math.min(...ys), w: Number(args.w), d: Number(args.d) }, true);
+    }
     case "nudgeOpeningClear": {
       const id = String(args.id);
       const clear = Number(args.clearanceFt ?? 1);

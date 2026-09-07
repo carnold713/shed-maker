@@ -4,6 +4,7 @@ import { footprintModule } from "./design/footprintModule";
 import { clearSpanLimit } from "./structural/clearSpanLimit";
 import { frostDepthVerified } from "./structural/frostDepthVerified";
 import { openingCornerClearance, openingFitsWall, openingOnPostLine, openingsOverlap, overheadDoorHeadroom } from "./framing/openings";
+import { aisleMinWidth, partitionOnPostLine, penHasAccess, penMinimumSize, zonesInsideFootprint, zonesOverlap } from "./design/zones";
 
 export * from "./types";
 
@@ -16,6 +17,12 @@ export const RULES: Rule[] = [
   overheadDoorHeadroom,
   openingCornerClearance,
   openingOnPostLine,
+  zonesInsideFootprint,
+  zonesOverlap,
+  penMinimumSize,
+  aisleMinWidth,
+  penHasAccess,
+  partitionOnPostLine,
   footprintModule,
 ];
 

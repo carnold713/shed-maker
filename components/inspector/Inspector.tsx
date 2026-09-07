@@ -12,6 +12,7 @@ import { getRule } from "@/rules";
 import { Panel } from "@/components/ui/Panel";
 import { Field, inputClass } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import { InteriorPanel, ZoneInspector } from "./ZoneInspector";
 
 /** Numeric input that accepts feet-inches text and commits on blur/Enter. */
 export function FtInput({ value, onCommit, min, max, testId }: { value: number; onCommit: (ft: number) => void; min: number; max: number; testId?: string }) {
@@ -45,6 +46,8 @@ export function Inspector() {
   if (!model || model.footprint.kind !== "rect") return null;
   const opening = selection ? model.openings.find((o) => o.id === selection) : undefined;
   if (opening) return <OpeningInspector id={opening.id} />;
+  const zone = selection ? model.zones.find((z) => z.id === selection) : undefined;
+  if (zone) return <ZoneInspector id={zone.id} />;
   if (selection && selection !== "footprint" && selection !== "roof" && selection !== "foundation") return <MemberInspector id={selection} />;
   return <BuildingInspector />;
 }
@@ -66,6 +69,7 @@ function BuildingInspector() {
 
   return (
     <>
+      <InteriorPanel />
       <Panel title="Footprint">
         <div className="grid grid-cols-2 gap-2">
           <Field label="Width (E–W)">

@@ -6,7 +6,12 @@ import { useViewStore } from "@/lib/store/useViewStore";
 import { useDerived } from "@/lib/store/useDerived";
 import { wallFrame } from "@/lib/framing/wallFrame";
 import { formatFtIn } from "@/lib/units";
-import type { Opening, Wall } from "@/lib/model/schema";
+import type { Opening, Species, Wall, ZoneType } from "@/lib/model/schema";
+import { defaultPenSize, ROOM_PRESETS, snapCoordinate, zoneRect, type Rect } from "@/lib/model/zones";
+import { derivePartitions } from "@/lib/interior/partitions";
+import { ZoneLayer, resizeByHandle, zoneFill, type Handle } from "./ZoneLayer";
+import { ToolPalette } from "./ToolPalette";
+import { SPECIES_PRESETS } from "@/rules/animals/presets";
 
 /**
  * Top-down plan in SVG (SPEC §3.4, §21). Plan +y is north and renders UP the
@@ -22,7 +27,19 @@ export function PlanView() {
   const openContextMenu = useViewStore((s) => s.openContextMenu);
   const hovered = useViewStore((s) => s.hovered);
   const setHovered = useViewStore((s) => s.setHovered);
-  const { framing } = useDerived();
+  const tool = useViewStore((s) => s.tool);
+  const toolSpecies = useViewStore((s) => s.toolSpecies) as Species;
+  const toolRoomType = useViewStore((s) => s.toolRoomType) as ZoneType;
+  const autoGrow = useViewStore((s) => s.autoGrow);
+  const addZone = useProjectStore((s) => s.addZone);
+  const moveZoneAction = useProjectStore((s) => s.moveZone);
+  const resizeZoneAction = useProjectStore((s) => s.resizeZone);
+  const removeZone = useProjectStore((s) => s.removeZone);
+  const { framing, report } = useDerived();
+  const partitions = useMemo(() => (model ? derivePartitions(model) : []), [model]);
+  const problems = useMemo(() => new Set((report?.findings ?? []).filter((f) => f.severity === "error").flatMap((f) => f.entityIds)), [report]);
+  const [ghost, setGhost] = useState<Rect | null>(null);
+  const [cursorFt, setCursorFt] = useState<{ x: number; y: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 600, h: 400 });
 
@@ -58,7 +75,12 @@ export function PlanView() {
     [ox, oy, scale],
   );
 
-  type Drag = { kind: "edge"; edge: "e" | "n" } | { kind: "opening"; id: string; wallId: string; grabOffsetFt: number };
+  type Drag =
+    | { kind: "edge"; edge: "e" | "n" }
+    | { kind: "opening"; id: string; wallId: string; grabOffsetFt: number }
+    | { kind: "zoneMove"; id: string; grabX: number; grabY: number; w: number; d: number; moved: boolean }
+    | { kind: "zoneResize"; id: string; handle: Handle; start: Rect }
+    | { kind: "draw"; x0: number; y0: number; moved: boolean };
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const endDrag = useRef<(() => void) | null>(null);
@@ -82,6 +104,11 @@ export function PlanView() {
     };
   };
   const finishDrag = () => {
+    const d = dragRef.current;
+    if (d?.kind === "draw") {
+      commitDraw();
+      setGhost(null);
+    }
     endDrag.current?.();
     dragRef.current = null;
     setDrag(null);
@@ -89,9 +116,39 @@ export function PlanView() {
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
-      const d = dragRef.current;
-      if (!d || !model) return;
+      if (!model) return;
       const p = toPlan(e, e.currentTarget);
+      setCursorFt(p);
+      const d = dragRef.current;
+      if (!d) {
+        // Hover ghost for stamp tools.
+        if (tool === "pen" || tool === "room" || tool === "aisle") {
+          const [w, dd] = toolSize();
+          setGhost({ x: snapCoordinate(model, "x", p.x - w / 2), y: snapCoordinate(model, "y", p.y - dd / 2), w, d: dd });
+        }
+        return;
+      }
+      if (d.kind === "draw") {
+        const x0 = Math.min(d.x0, p.x);
+        const y0 = Math.min(d.y0, p.y);
+        const r: Rect = { x: x0, y: y0, w: Math.abs(p.x - d.x0), d: Math.abs(p.y - d.y0) };
+        if (r.w > 0.75 || r.d > 0.75) d.moved = true;
+        const [w, dd] = toolSize();
+        setGhost(d.moved ? { x: snapCoordinate(model, "x", r.x), y: snapCoordinate(model, "y", r.y), w: Math.max(1, snapCoordinate(model, "x", r.x + r.w) - snapCoordinate(model, "x", r.x)), d: Math.max(1, snapCoordinate(model, "y", r.y + r.d) - snapCoordinate(model, "y", r.y)) } : { x: snapCoordinate(model, "x", d.x0 - w / 2), y: snapCoordinate(model, "y", d.y0 - dd / 2), w, d: dd });
+        return;
+      }
+      if (d.kind === "zoneMove") {
+        const nx = p.x - d.grabX;
+        const ny = p.y - d.grabY;
+        if (Math.abs(nx - (zoneRect(model.zones.find((z) => z.id === d.id)!).x)) > 0.01 || Math.abs(ny - zoneRect(model.zones.find((z) => z.id === d.id)!).y) > 0.01) d.moved = true;
+        moveZoneAction(d.id, nx, ny, autoGrow);
+        return;
+      }
+      if (d.kind === "zoneResize") {
+        const r = resizeByHandle(d.start, d.handle, p.x, p.y);
+        resizeZoneAction(d.id, r, autoGrow);
+        return;
+      }
       if (d.kind === "edge") {
         if (d.edge === "e") setFootprintRect(Math.round(p.x), D);
         else setFootprintRect(W, Math.round(p.y));
@@ -104,8 +161,27 @@ export function PlanView() {
         moveOpening(d.id, Math.round((u - d.grabOffsetFt) / snap) * snap);
       }
     },
-    [model, toPlan, setFootprintRect, moveOpening, D, W],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [model, toPlan, setFootprintRect, moveOpening, D, W, tool, toolSpecies, toolRoomType, autoGrow, moveZoneAction, resizeZoneAction],
   );
+
+  /** Preset size for the active stamp tool, [w, d] feet. */
+  function toolSize(): [number, number] {
+    if (tool === "pen") return defaultPenSize(toolSpecies);
+    if (tool === "aisle") {
+      const along = model?.roof.ridgeAxis === "ns" ? D : W;
+      return model?.roof.ridgeAxis === "ns" ? [12, along] : [along, 12];
+    }
+    return ROOM_PRESETS[toolRoomType] ?? [12, 12];
+  }
+
+  /** Commit a draw/stamp: uses the ghost rect. */
+  function commitDraw() {
+    if (!model || !ghost) return;
+    const type: ZoneType = tool === "pen" ? "pen" : tool === "aisle" ? "aisle" : toolRoomType;
+    const id = addZone({ type, species: tool === "pen" ? toolSpecies : undefined, rect: ghost, autoGrow });
+    if (id) select(id);
+  }
 
   if (!model || fp?.kind !== "rect") {
     return <div className="flex h-full items-center justify-center text-sm text-muted">No footprint</div>;
@@ -122,20 +198,38 @@ export function PlanView() {
   const wallAt = (w: Wall) => ({ f: wallFrame(w), w });
 
   return (
-    <div ref={wrapRef} className="relative h-full w-full select-none overflow-hidden">
+    <div ref={wrapRef} className={`relative h-full w-full select-none overflow-hidden ${tool === "erase" ? "cursor-not-allowed" : tool !== "select" ? "cursor-crosshair" : ""}`}>
+      <ToolPalette />
       <svg
         width={size.w}
         height={size.h}
         className="block"
         onPointerMove={onPointerMove}
         onPointerUp={finishDrag}
-        onPointerLeave={finishDrag}
+        onPointerLeave={() => {
+          finishDrag();
+          setGhost(null);
+          setCursorFt(null);
+        }}
+        onPointerDown={(e) => {
+          if (e.button !== 0 || !model) return;
+          const onEmpty = e.target === e.currentTarget || (e.target as Element).getAttribute("data-plan-bg") === "1";
+          if ((tool === "pen" || tool === "room" || tool === "aisle") && onEmpty) {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const p = toPlan(e, e.currentTarget);
+            beginDrag({ kind: "draw", x0: p.x, y0: p.y, moved: false });
+          }
+        }}
         onClick={(e) => {
-          if (e.target === e.currentTarget) select(null);
+          if (tool !== "select") return; // a stamp just selected its new zone
+          if (e.target === e.currentTarget || (e.target as Element).getAttribute("data-plan-bg") === "1") select(null);
         }}
         onContextMenu={(e) => {
           e.preventDefault();
-          if (e.target === e.currentTarget) openContextMenu({ kind: "empty", x: e.clientX, y: e.clientY, from: "plan" });
+          if (e.target === e.currentTarget || (e.target as Element).getAttribute("data-plan-bg") === "1") {
+            const p = toPlan(e, e.currentTarget);
+            openContextMenu({ kind: "empty", x: e.clientX, y: e.clientY, from: "plan", planX: p.x, planY: p.y });
+          }
         }}
         data-testid="plan-svg"
       >
@@ -157,7 +251,56 @@ export function PlanView() {
         </g>
 
         {/* slab */}
-        {model.foundation.slab.enabled ? <rect x={px(0)} y={py(D)} width={W * scale} height={D * scale} fill="#d9d6cf" opacity={0.5} /> : null}
+        <rect x={px(0)} y={py(D)} width={W * scale} height={D * scale} fill={model.foundation.slab.enabled ? "#d9d6cf" : "transparent"} opacity={0.5} data-plan-bg="1" />
+
+        {/* zones (pens, aisles, rooms) and derived partitions */}
+        <ZoneLayer
+          zones={model.zones}
+          partitions={partitions}
+          px={px}
+          py={py}
+          scale={scale}
+          selection={selection}
+          hovered={hovered}
+          problems={problems}
+          onPointerDownZone={(z, e) => {
+            if (e.button !== 0) return;
+            e.stopPropagation();
+            if (tool === "erase") {
+              removeZone(z.id);
+              return;
+            }
+            if (tool !== "select") return;
+            (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+            select(z.id);
+            const p = toPlan(e, (e.currentTarget as SVGElement).ownerSVGElement!);
+            const r = zoneRect(z);
+            beginDrag({ kind: "zoneMove", id: z.id, grabX: p.x - r.x, grabY: p.y - r.y, w: r.w, d: r.d, moved: false });
+          }}
+          onPointerDownHandle={(z, h, e) => {
+            e.stopPropagation();
+            (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+            beginDrag({ kind: "zoneResize", id: z.id, handle: h, start: zoneRect(z) });
+          }}
+          onContextMenu={(z, e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            select(z.id);
+            openContextMenu({ kind: "zone", id: z.id, x: e.clientX, y: e.clientY, from: "plan" });
+          }}
+          onHover={setHovered}
+          onDoubleClick={(z) => select(z.id)}
+        />
+
+        {/* ghost for stamp/draw tools */}
+        {ghost && tool !== "select" && tool !== "erase" ? (
+          <g pointerEvents="none">
+            <rect x={px(ghost.x)} y={py(ghost.y + ghost.d)} width={ghost.w * scale} height={ghost.d * scale} fill={tool === "pen" ? SPECIES_PRESETS[toolSpecies].color : zoneFill({ type: tool === "aisle" ? "aisle" : toolRoomType } as never)} fillOpacity={0.45} stroke="#b5532a" strokeDasharray="4 3" />
+            <text x={px(ghost.x + ghost.w / 2)} y={py(ghost.y + ghost.d / 2)} textAnchor="middle" dominantBaseline="middle" fontSize={11} fontFamily="ui-monospace, monospace" fill="#1c1b19">
+              {formatFtIn(ghost.w)}×{formatFtIn(ghost.d)}
+            </text>
+          </g>
+        ) : null}
 
         {/* exterior walls: thick line inside the plan line, with gaps at openings */}
         {model.walls
@@ -326,7 +469,8 @@ export function PlanView() {
         </g>
       </svg>
       <div className="pointer-events-none absolute bottom-2 left-3 font-mono text-[11px] text-muted">
-        {formatFtIn(W)} × {formatFtIn(D)} · {W * D} sq ft · {posts.length} posts · {bay}&apos; bays · grid {gridStep}&apos;
+        {formatFtIn(W)} × {formatFtIn(D)} · {W * D} sq ft · {posts.length} posts · {bay}&apos; bays · {model.zones.length} zones
+        {cursorFt ? ` · ${formatFtIn(Math.max(0, cursorFt.x))}, ${formatFtIn(Math.max(0, cursorFt.y))}` : ""}
         {drag?.kind === "opening" ? " · Shift = 1' snap" : ""}
       </div>
     </div>
