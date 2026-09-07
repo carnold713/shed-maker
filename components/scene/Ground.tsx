@@ -57,10 +57,11 @@ export function Ground({ center, grade, sizeFt = 260, clippingPlanes }: { center
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[ox, grade, oz]} receiveShadow>
         <planeGeometry args={[sizeFt, sizeFt]} />
-        <meshStandardMaterial map={texture} roughness={0.95} metalness={0} clippingPlanes={clippingPlanes} />
+        <meshStandardMaterial map={texture} roughness={0.95} metalness={0} clippingPlanes={clippingPlanes} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
       </mesh>
-      {/* thick edge so the plate reads as a slab from low angles */}
-      <mesh position={[ox, grade - 1, oz]} receiveShadow>
+      {/* Thick edge so the plate reads as a slab from low angles. Its top face sits 1" BELOW the
+          textured plane: coplanar faces z-fight (stepped bands across the plate on WebGPU). */}
+      <mesh position={[ox, grade - 1 - 1 / 12, oz]}>
         <boxGeometry args={[sizeFt, 2, sizeFt]} />
         <meshStandardMaterial color="#cfc7ba" roughness={1} clippingPlanes={clippingPlanes} />
       </mesh>
