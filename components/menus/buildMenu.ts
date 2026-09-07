@@ -2,7 +2,8 @@ import type { MenuItem } from "./ContextMenu";
 import type { ContextTarget } from "@/lib/store/useViewStore";
 import { useViewStore, ALL_LAYERS, LAYER_LABEL } from "@/lib/store/useViewStore";
 import { useProjectStore } from "@/lib/store/useProjectStore";
-import { DOOR_TYPES, OPENING_PRESETS } from "@/lib/model/openings";
+import { DOOR_TYPES, OPENING_PRESETS, DOOR_PALETTE, WINDOW_PALETTE } from "@/lib/model/openings";
+import { LEAN_TO_DEPTHS_FT } from "@/lib/model/leanTos";
 import type { OpeningType } from "@/lib/model/schema";
 import { formatFtIn } from "@/lib/units";
 import { getRule } from "@/rules";
@@ -26,20 +27,23 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
   const addOpeningItems = (wallId: string, uFt?: number): MenuItem[] => [
     {
       label: "Add door",
-      children: DOOR_TYPES.map((type) => ({
-        label: OPENING_PRESETS[type].label,
+      children: DOOR_PALETTE.map((d) => ({
+        label: d.label,
         onSelect: () => {
-          const id = ps.addOpening({ wallId, type, centerFt: uFt });
+          const id = ps.addOpening({ wallId, type: d.type, centerFt: uFt, widthFt: d.widthFt, heightFt: d.heightFt, sillFt: d.sillFt, swing: d.swing, variant: d.variant });
           if (id) ps.select(id);
         },
       })),
     },
     {
       label: "Add window",
-      children: sizeItems("window", (w, h) => {
-        const id = ps.addOpening({ wallId, type: "window", centerFt: uFt, widthFt: w, heightFt: h });
-        if (id) ps.select(id);
-      }),
+      children: WINDOW_PALETTE.map((w) => ({
+        label: w.label,
+        onSelect: () => {
+          const id = ps.addOpening({ wallId, type: "window", centerFt: uFt, widthFt: w.widthFt, heightFt: w.heightFt, sillFt: w.sillFt, variant: w.variant });
+          if (id) ps.select(id);
+        },
+      })),
     },
   ];
 
@@ -58,6 +62,7 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
       children: ALL_LAYERS.map((l) => ({ label: `${vs.visibleLayers.has(l) ? "✓ " : "   "}${LAYER_LABEL[l]}`, onSelect: () => vs.toggleLayer(l) })),
     },
     { label: vs.renderMode === "white" ? "Realistic materials" : "White model", onSelect: () => vs.setRenderMode(vs.renderMode === "white" ? "realistic" : "white") },
+    { label: `${vs.isometric ? "✓ " : "   "}Isometric camera`, onSelect: () => vs.setIsometric(!vs.isometric), shortcut: "I" },
     { label: vs.cutHeightFt === null ? "Cutaway at 4'" : "Remove cutaway", onSelect: () => vs.setCutHeight(vs.cutHeightFt === null ? 4 : null), shortcut: "X" },
     { separator: true, label: "" },
     { label: "Zoom to fit", onSelect: () => vs.requestFit(), shortcut: "F" },
@@ -68,8 +73,18 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
     case "wall": {
       const wall = model.walls.find((w) => w.id === t.id);
       if (!wall) return [];
+      const hasLeanTo = model.leanTos.some((l) => l.side === wall.side);
       return [
         ...addOpeningItems(wall.id, t.uFt),
+        {
+          label: hasLeanTo ? "Lean-to on this side (exists)" : "Add lean-to on this side",
+          disabled: hasLeanTo,
+          children: hasLeanTo
+            ? undefined
+            : LEAN_TO_DEPTHS_FT.map((d) => ({ label: `${d}' deep · open`, onSelect: () => { const id = ps.addLeanTo({ side: wall.side!, depthFt: d }); if (id) ps.select(id); } })).concat([
+                { label: "12' deep · enclosed", onSelect: () => { const id = ps.addLeanTo({ side: wall.side!, depthFt: 12, enclosed: true }); if (id) ps.select(id); } },
+              ]),
+        },
         { separator: true, label: "" },
         {
           label: "Girts",
@@ -176,6 +191,19 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
         { separator: true, label: "" },
         { label: "Properties", onSelect: () => ps.select(z.id) },
         { label: "Delete", onSelect: () => ps.removeZone(z.id), danger: true, shortcut: "Del" },
+      ];
+    }
+    case "leanTo": {
+      const lt = model.leanTos.find((l) => l.id === t.id);
+      if (!lt) return [];
+      return [
+        { label: "Depth", children: LEAN_TO_DEPTHS_FT.map((d) => ({ label: `${lt.depthFt === d ? "✓ " : "   "}${d}'`, onSelect: () => ps.updateLeanTo(lt.id, { depthFt: d }) })) },
+        { label: "Pitch", children: [1, 2, 3, 4].map((p) => ({ label: `${lt.pitch === p ? "✓ " : "   "}${p}:12`, onSelect: () => ps.updateLeanTo(lt.id, { pitch: p }) })) },
+        { label: `${lt.enclosed ? "✓ " : "   "}Enclosed`, onSelect: () => ps.updateLeanTo(lt.id, { enclosed: !lt.enclosed }) },
+        { label: `${lt.slab ? "✓ " : "   "}Concrete pad`, onSelect: () => ps.updateLeanTo(lt.id, { slab: !lt.slab }) },
+        { separator: true, label: "" },
+        { label: "Properties", onSelect: () => ps.select(lt.id) },
+        { label: "Delete", onSelect: () => ps.removeLeanTo(lt.id), danger: true, shortcut: "Del" },
       ];
     }
     case "empty": {

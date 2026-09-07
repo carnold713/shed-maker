@@ -12,6 +12,8 @@ import { derivePartitions } from "@/lib/interior/partitions";
 import { ZoneLayer, resizeByHandle, zoneFill, type Handle } from "./ZoneLayer";
 import { ToolPalette } from "./ToolPalette";
 import { SPECIES_PRESETS } from "@/rules/animals/presets";
+import { DOOR_PALETTE, WINDOW_PALETTE, needsApron } from "@/lib/model/openings";
+import { leanToPolygon } from "@/lib/model/leanTos";
 
 /**
  * Top-down plan in SVG (SPEC §3.4, §21). Plan +y is north and renders UP the
@@ -32,6 +34,13 @@ export function PlanView() {
   const toolRoomType = useViewStore((s) => s.toolRoomType) as ZoneType;
   const autoGrow = useViewStore((s) => s.autoGrow);
   const addZone = useProjectStore((s) => s.addZone);
+  const addOpening = useProjectStore((s) => s.addOpening);
+  const removeOpening = useProjectStore((s) => s.removeOpening);
+  const addLeanTo = useProjectStore((s) => s.addLeanTo);
+  const removeLeanTo = useProjectStore((s) => s.removeLeanTo);
+  const doorKey = useViewStore((s) => s.toolDoorKey);
+  const windowKey = useViewStore((s) => s.toolWindowKey);
+  const [wallGhost, setWallGhost] = useState<{ wallId: string; u: number; w: number } | null>(null);
   const moveZoneAction = useProjectStore((s) => s.moveZone);
   const resizeZoneAction = useProjectStore((s) => s.resizeZone);
   const removeZone = useProjectStore((s) => s.removeZone);
@@ -121,6 +130,12 @@ export function PlanView() {
       setCursorFt(p);
       const d = dragRef.current;
       if (!d) {
+        if (tool === "door" || tool === "window") {
+          const hit = nearestWall(model, p.x, p.y);
+          const entry = tool === "door" ? DOOR_PALETTE.find((e) => e.key === doorKey) : WINDOW_PALETTE.find((e) => e.key === windowKey);
+          setWallGhost(hit && entry && hit.dist < 3 ? { wallId: hit.wall.id, u: hit.u, w: entry.widthFt } : null);
+          return;
+        }
         // Hover ghost for stamp tools.
         if (tool === "pen" || tool === "room" || tool === "aisle") {
           const [w, dd] = toolSize();
@@ -162,8 +177,16 @@ export function PlanView() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [model, toPlan, setFootprintRect, moveOpening, D, W, tool, toolSpecies, toolRoomType, autoGrow, moveZoneAction, resizeZoneAction],
+    [model, toPlan, setFootprintRect, moveOpening, D, W, tool, toolSpecies, toolRoomType, autoGrow, moveZoneAction, resizeZoneAction, doorKey, windowKey],
   );
+
+  /** Place the active door/window palette entry on the wall under the cursor. */
+  function placeOnWall(wallId: string, u: number) {
+    const entry = tool === "door" ? DOOR_PALETTE.find((e) => e.key === doorKey) : WINDOW_PALETTE.find((e) => e.key === windowKey);
+    if (!entry) return;
+    const id = addOpening({ wallId, type: entry.type, centerFt: u, widthFt: entry.widthFt, heightFt: entry.heightFt, sillFt: entry.sillFt, swing: entry.swing, variant: entry.variant });
+    if (id) select(id);
+  }
 
   /** Preset size for the active stamp tool, [w, d] feet. */
   function toolSize(): [number, number] {
@@ -198,7 +221,7 @@ export function PlanView() {
   const wallAt = (w: Wall) => ({ f: wallFrame(w), w });
 
   return (
-    <div ref={wrapRef} className={`relative h-full w-full select-none overflow-hidden ${tool === "erase" ? "cursor-not-allowed" : tool !== "select" ? "cursor-crosshair" : ""}`}>
+    <div ref={wrapRef} className={`relative h-full w-full select-none overflow-hidden bg-[#faf8f4] ${tool === "erase" ? "cursor-not-allowed" : tool !== "select" ? "cursor-crosshair" : ""}`}>
       <ToolPalette />
       <svg
         width={size.w}
@@ -302,6 +325,68 @@ export function PlanView() {
           </g>
         ) : null}
 
+        {/* concrete: aprons outside big doors */}
+        {model.foundation.slab.enabled && model.foundation.slab.aprons
+          ? model.openings.filter((o) => needsApron(o.type)).map((o) => {
+              const w = model.walls.find((x) => x.id === o.wallId);
+              if (!w) return null;
+              const f = wallFrame(w);
+              const depth = model.foundation.slab.apronDepthFt;
+              const pts = [
+                [o.offsetFt - 1, 0],
+                [o.offsetFt + o.widthFt + 1, 0],
+                [o.offsetFt + o.widthFt + 1, depth],
+                [o.offsetFt - 1, depth],
+              ].map(([u, n]) => `${px(w.start.x + f.dir.x * u + f.normal.x * n)},${py(w.start.y + f.dir.y * u + f.normal.y * n)}`);
+              return <polygon key={`apron_${o.id}`} points={pts.join(" ")} fill="#d9d6cf" fillOpacity={0.6} stroke="#a9a59c" strokeDasharray="3 2" pointerEvents="none" />;
+            })
+          : null}
+
+        {/* lean-tos */}
+        {model.leanTos.map((lt) => {
+          const poly = leanToPolygon(model, lt);
+          if (poly.length === 0) return null;
+          const pts = poly.map((p) => `${px(p.x)},${py(p.y)}`).join(" ");
+          const sel = selection === lt.id;
+          const mid = { x: (poly[0].x + poly[2].x) / 2, y: (poly[0].y + poly[2].y) / 2 };
+          return (
+            <g
+              key={lt.id}
+              className="cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (tool === "erase") return removeLeanTo(lt.id);
+                select(lt.id);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                select(lt.id);
+                openContextMenu({ kind: "leanTo", id: lt.id, x: e.clientX, y: e.clientY, from: "plan" });
+              }}
+              data-testid={`plan-leanto-${lt.side}`}
+            >
+              <polygon points={pts} fill={lt.slab ? "#d9d6cf" : "#eeece6"} fillOpacity={0.7} stroke={sel ? "#b5532a" : "#4a4741"} strokeWidth={sel ? 2 : 1.25} strokeDasharray={lt.enclosed ? undefined : "6 3"} />
+              <text x={px(mid.x)} y={py(mid.y)} textAnchor="middle" dominantBaseline="middle" fontSize={11} fill="#4a4741" pointerEvents="none">
+                {lt.enclosed ? "Enclosed lean-to" : "Lean-to"} {lt.depthFt}&apos; · {lt.pitch}:12
+              </text>
+            </g>
+          );
+        })}
+
+        {/* ghost for door/window tools on the nearest wall */}
+        {wallGhost && (tool === "door" || tool === "window")
+          ? (() => {
+              const w = model.walls.find((x) => x.id === wallGhost.wallId);
+              if (!w) return null;
+              const f = wallFrame(w);
+              const u0 = wallGhost.u - wallGhost.w / 2;
+              const u1 = wallGhost.u + wallGhost.w / 2;
+              const P = (u: number, n: number) => `${px(w.start.x + f.dir.x * u + f.normal.x * n)},${py(w.start.y + f.dir.y * u + f.normal.y * n)}`;
+              return <polygon points={[P(u0, -0.6), P(u1, -0.6), P(u1, 0.6), P(u0, 0.6)].join(" ")} fill="#b5532a" fillOpacity={0.35} stroke="#b5532a" strokeDasharray="3 2" pointerEvents="none" />;
+            })()
+          : null}
+
         {/* exterior walls: thick line inside the plan line, with gaps at openings */}
         {model.walls
           .filter((w) => w.role === "exterior")
@@ -324,6 +409,14 @@ export function PlanView() {
                 className="cursor-pointer"
                 onClick={(e) => {
                   e.stopPropagation();
+                  const p = toPlan(e, e.currentTarget.ownerSVGElement!);
+                  const u = Math.max(0, Math.min(f.lengthFt, (p.x - w.start.x) * f.dir.x + (p.y - w.start.y) * f.dir.y));
+                  if (tool === "door" || tool === "window") return placeOnWall(w.id, u);
+                  if (tool === "leanTo") {
+                    const id = addLeanTo({ side: w.side! });
+                    if (id) select(id);
+                    return;
+                  }
                   select("footprint");
                 }}
                 onContextMenu={(e) => {
@@ -393,6 +486,11 @@ export function PlanView() {
               hovered={hovered === o.id}
               onPointerDown={(e) => {
                 e.stopPropagation();
+                if (tool === "erase") {
+                  removeOpening(o.id);
+                  return;
+                }
+                if (tool !== "select") return;
                 (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
                 select(o.id);
                 const p = toPlan(e, (e.currentTarget as SVGElement).ownerSVGElement!);
@@ -510,7 +608,7 @@ function OpeningSymbol({
   const angleDeg = (-f.angle * 180) / Math.PI; // SVG y is down
   const isWindow = o.type === "window";
   const isSliding = o.type === "slidingDoor" || o.type === "stallDoor";
-  const isOverhead = o.type === "overheadDoor";
+  const isOverhead = o.type === "overheadDoor" || o.type === "rollUpDoor";
   const swingOut = o.swing === "out";
   const inset = -wallT / 2;
 
@@ -592,6 +690,21 @@ function OpeningSymbol({
       <title>{`${o.type} ${formatFtIn(o.widthFt)} × ${formatFtIn(o.heightFt)} @ ${formatFtIn(o.offsetFt)}`}</title>
     </g>
   );
+}
+
+/** Nearest exterior wall to a plan point, with the distance and the position along it. */
+function nearestWall(model: NonNullable<ReturnType<typeof useProjectStore.getState>["model"]>, x: number, y: number) {
+  let best: { wall: Wall; u: number; dist: number } | null = null;
+  for (const w of model.walls) {
+    if (w.role !== "exterior") continue;
+    const f = wallFrame(w);
+    const u = Math.max(0, Math.min(f.lengthFt, (x - w.start.x) * f.dir.x + (y - w.start.y) * f.dir.y));
+    const cx = w.start.x + f.dir.x * u;
+    const cy = w.start.y + f.dir.y * u;
+    const dist = Math.hypot(x - cx, y - cy);
+    if (!best || dist < best.dist) best = { wall: w, u, dist };
+  }
+  return best;
 }
 
 /** Rectangle of plan-space half-width `halfFt` around the wall segment [u0,u1], as SVG points. */

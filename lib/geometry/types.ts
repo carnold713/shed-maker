@@ -22,7 +22,11 @@ export type BoxKind =
   | "partition"
   | "grille"
   | "floor"
-  | "stallDoor";
+  | "stallDoor"
+  | "gravel"
+  | "apron"
+  | "leanToSkin"
+  | "coil";
 
 export interface BoxMember {
   id: string;

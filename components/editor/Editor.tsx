@@ -52,7 +52,7 @@ export function Editor({ projectId, initialModel }: { projectId: string; initial
             </div>
           ) : null}
         </div>
-        <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-border bg-background p-3">
+        <aside className="flex w-[21rem] shrink-0 flex-col gap-3 overflow-y-auto border-l border-border/70 bg-background p-3">
           <Inspector />
           <CheckPanel />
         </aside>
@@ -66,7 +66,11 @@ function useKeyboardShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      const inField = !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
+      if (inField && e.key === "Escape") {
+        // Escape always leaves the field, then behaves like a normal Escape.
+        target.blur();
+      } else if (inField) return;
       const ps = useProjectStore.getState();
       const vs = useViewStore.getState();
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -98,7 +102,13 @@ function useKeyboardShortcuts() {
           ps.moveZone(zone.id, Math.max(0, x), Math.max(0, y), vs.autoGrow);
           return;
         }
-        const toolKeys: Record<string, "select" | "pen" | "aisle" | "room" | "erase"> = { v: "select", p: "pen", a: "aisle", r: "room", e: "erase" };
+        const leanTo = sel ? ps.model?.leanTos.find((l) => l.id === sel) : undefined;
+        if ((e.key === "Delete" || e.key === "Backspace") && leanTo) {
+          e.preventDefault();
+          ps.removeLeanTo(leanTo.id);
+          return;
+        }
+        const toolKeys: Record<string, "select" | "pen" | "aisle" | "room" | "erase" | "door" | "window" | "leanTo"> = { v: "select", p: "pen", a: "aisle", r: "room", e: "erase", d: "door", w: "window", l: "leanTo" };
         if (toolKeys[e.key.toLowerCase()]) {
           vs.setTool(toolKeys[e.key.toLowerCase()]);
           return;
@@ -125,6 +135,10 @@ function useKeyboardShortcuts() {
         }
         if (e.key === "`") {
           vs.setPreset(vs.preset === "framing" ? "exterior" : "framing");
+          return;
+        }
+        if (e.key.toLowerCase() === "i") {
+          vs.setIsometric(!vs.isometric);
           return;
         }
         return;

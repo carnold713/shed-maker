@@ -25,6 +25,8 @@ function selectionIdFor(b: BoxMember): string {
 function targetFor(b: BoxMember): ContextTarget["kind"] {
   if (b.kind === "wallSkin") return "wall";
   if (b.kind === "floor" || b.kind === "partition" || b.kind === "grille" || b.kind === "stallDoor") return "zone";
+  if (b.kind === "leanToSkin" || b.entityId.startsWith("lt_")) return "leanTo";
+  if (b.kind === "apron" || b.kind === "gravel") return "footprint";
   if (b.kind === "framing") return "member";
   if (b.kind === "roofPlane") return "roof";
   if (b.kind === "slab") return "footprint";
@@ -77,7 +79,7 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
       e.nativeEvent.preventDefault();
       const kind = targetFor(b);
       const id = kind === "wall" ? b.entityId : kind === "member" ? b.id : kind === "roof" ? "roof" : kind === "footprint" ? "footprint" : b.entityId;
-      if (kind === "opening" || kind === "member" || kind === "wall" || kind === "zone") select(kind === "wall" ? "footprint" : id);
+      if (kind === "opening" || kind === "member" || kind === "wall" || kind === "zone" || kind === "leanTo") select(kind === "wall" ? "footprint" : id);
       openContextMenu({ kind, id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY, from: "3d" });
     },
     [openContextMenu, select],

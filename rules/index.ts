@@ -5,6 +5,7 @@ import { clearSpanLimit } from "./structural/clearSpanLimit";
 import { frostDepthVerified } from "./structural/frostDepthVerified";
 import { openingCornerClearance, openingFitsWall, openingOnPostLine, openingsOverlap, overheadDoorHeadroom } from "./framing/openings";
 import { aisleMinWidth, partitionOnPostLine, penHasAccess, penMinimumSize, zonesInsideFootprint, zonesOverlap } from "./design/zones";
+import { leanToClearance, leanToRafterSpan } from "./design/leanTos";
 
 export * from "./types";
 
@@ -23,6 +24,8 @@ export const RULES: Rule[] = [
   aisleMinWidth,
   penHasAccess,
   partitionOnPostLine,
+  leanToClearance,
+  leanToRafterSpan,
   footprintModule,
 ];
 

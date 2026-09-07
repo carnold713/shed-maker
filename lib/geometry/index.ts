@@ -2,8 +2,9 @@ import type { BuildingModel, Opening } from "@/lib/model/schema";
 import { deriveFraming, freeSegments, openingSpans, roofParams, wallFrame, wallLocalToWorld, type FramingSet } from "@/lib/framing";
 import { wallRotation, type WallFrame } from "@/lib/framing/wallFrame";
 import { ROOF_PANEL_THICK_FT } from "@/lib/framing/roofMath";
-import { SLIDING_LEAF_OVERLAP_FT, SLIDING_LEAF_STANDOFF_FT } from "@/lib/model/openings";
-import { planToWorld } from "./frame";
+import { SLIDING_LEAF_OVERLAP_FT, SLIDING_LEAF_STANDOFF_FT, needsApron } from "@/lib/model/openings";
+import { leanToHeights, leanToSpan } from "@/lib/model/leanTos";
+import { planToWorld, eulerYX } from "./frame";
 import { derivePartitions } from "@/lib/interior/partitions";
 import { zoneRect } from "@/lib/model/zones";
 import type { BoxMember, Geometry, PolygonMember, Vec3 } from "./types";
@@ -27,10 +28,33 @@ export function deriveGeometry(model: BuildingModel, framing: FramingSet = deriv
   const boxes: BoxMember[] = [];
   const polygons: PolygonMember[] = [];
 
-  // ---- Slab
+  // ---- Slab, gravel base, lean-to pads, aprons (SPEC §4.3, §4.8). Finished floor is y = 0; grade is below it.
   if (model.foundation.slab.enabled) {
     const t = model.foundation.slab.thicknessIn / 12;
+    const g = model.foundation.slab.gravelBaseIn / 12;
     boxes.push({ id: "slab", kind: "slab", layer: "slab", entityId: "foundation", material: "concrete", center: [W / 2, -t / 2, -D / 2], size: [W, t, D], rotation: [0, 0, 0] });
+    boxes.push({ id: "gravel", kind: "gravel", layer: "slab", entityId: "foundation", material: "gravel", center: [W / 2, -t - g / 2, -D / 2], size: [W + 1, g, D + 1], rotation: [0, 0, 0] });
+    for (const lt of model.leanTos) {
+      if (!lt.slab) continue;
+      const span = leanToSpan(model, lt);
+      const wall = model.walls.find((w) => w.id === span.wallId);
+      if (!wall) continue;
+      const f = wallFrame(wall);
+      boxes.push({ id: `slab_${lt.id}`, kind: "slab", layer: "slab", entityId: lt.id, material: "concrete", center: wallLocalToWorld(f, (span.u0 + span.u1) / 2, -t / 2, lt.depthFt / 2), size: [span.lengthFt, t, lt.depthFt], rotation: wallRotation(f) });
+    }
+    if (model.foundation.slab.aprons) {
+      for (const o of model.openings) {
+        if (!needsApron(o.type)) continue;
+        const wall = model.walls.find((w) => w.id === o.wallId);
+        if (!wall || wall.role !== "exterior") continue;
+        // Skip if a lean-to pad already covers this wall.
+        if (model.leanTos.some((lt) => lt.slab && leanToSpan(model, lt).wallId === wall.id)) continue;
+        const f = wallFrame(wall);
+        const depth = model.foundation.slab.apronDepthFt;
+        const aw = o.widthFt + 2;
+        boxes.push({ id: `apron_${o.id}`, kind: "apron", layer: "slab", entityId: o.id, material: "concrete", center: wallLocalToWorld(f, o.offsetFt + o.widthFt / 2, -t / 2 - 0.02, depth / 2), size: [aw, t, depth], rotation: wallRotation(f) });
+      }
+    }
   }
 
   // ---- Framing members (already world-space boxes)
@@ -132,6 +156,45 @@ export function deriveGeometry(model: BuildingModel, framing: FramingSet = deriv
 
   // ---- Interior: zone floors and partitions derived from zone edges (SPEC §5.3, §24)
   boxes.push(...interiorGeometry(model));
+
+  // ---- Lean-tos: roof plane, enclosure skins
+  for (const lt of model.leanTos) {
+    const span = leanToSpan(model, lt);
+    const wall = model.walls.find((w) => w.id === span.wallId);
+    if (!wall) continue;
+    const f = wallFrame(wall);
+    const { highFt, lowFt, theta } = leanToHeights(model, lt);
+    const purlinTop = 3.5 / 12 / Math.cos(theta); // 2×4 purlins on edge over the rafters
+    const ov = 1; // 12" overhang at the low edge
+    const run = lt.depthFt + ov;
+    const slopeLen = run / Math.cos(theta);
+    const hMid = (highFt + (lowFt - ov * (lt.pitch / 12))) / 2 + purlinTop + roofThick / 2 / Math.cos(theta);
+    boxes.push({
+      id: `ltroof_${lt.id}`,
+      kind: "roofPlane",
+      layer: "roofing",
+      entityId: lt.id,
+      material: "roofing",
+      center: wallLocalToWorld(f, (span.u0 + span.u1) / 2, hMid, run / 2),
+      size: [span.lengthFt + 2 * 0.5, roofThick, slopeLen],
+      rotation: eulerYX(wallRotation(f)[1], theta),
+    });
+    if (lt.enclosed) {
+      const t = SIDING_THICK_FT;
+      const D = lt.depthFt;
+      const postTop = lowFt - 9.25 / 12;
+      // Outer wall skin (full span) and two end skins, siding outside the posts.
+      boxes.push({ id: `ltskin_${lt.id}_out`, kind: "leanToSkin", layer: "siding", entityId: lt.id, material: "siding", center: wallLocalToWorld(f, (span.u0 + span.u1) / 2, lowFt / 2, D + t / 2), size: [span.lengthFt, lowFt, t], rotation: wallRotation(f) });
+      for (const [k, u] of [span.u0, span.u1].entries()) {
+        const n0 = 0;
+        const n1 = D;
+        const hAvg = (highFt + lowFt) / 2;
+        // End wall is a trapezoid: approximate with a box to the low height plus a sloped-top box is P1; use average height.
+        boxes.push({ id: `ltskin_${lt.id}_end${k}`, kind: "leanToSkin", layer: "siding", entityId: lt.id, material: "siding", center: wallLocalToWorld(f, u + (k === 0 ? -t / 2 : t / 2), hAvg / 2, (n0 + n1) / 2), size: [t, hAvg, n1 - n0], rotation: wallRotation(f) });
+      }
+      void postTop;
+    }
+  }
 
   const pad = Math.max(rp.ovE, rp.ovG) + 1;
   const embed = model.frame.post.foundation === "embedded" ? model.frame.post.embedIn / 12 : 0;
@@ -235,9 +298,21 @@ function openingGeometry(f: WallFrame, o: Opening): BoxMember[] {
     out.push(mk(`${o.id}_track`, "doorFrame", "trim", u0 - o.widthFt * (o.swing === "biParting" ? 0.5 : 1) - ov, u1 + (o.swing === "biParting" ? o.widthFt * 0.5 : 0) + ov, h1 + ov, h1 + ov + 0.2, SIDING_THICK_FT, n0 + leafT + 0.02));
     return out;
   }
+  if (o.type === "rollUpDoor") {
+    // Coil housing above the opening on the inside face, curtain in the opening plane.
+    const n0 = -frameD + 0.5 / 12;
+    out.push(mk(`${o.id}_leaf`, "doorLeaf", "door", u0 + jambT, u1 - jambT, h0, h1 - jambT, n0, n0 + 1 / 12));
+    out.push(mk(`${o.id}_coil`, "coil", "trim", u0 - 0.5, u1 + 0.5, h1, h1 + 1.25, -frameD - 1.25, -frameD));
+    return out;
+  }
   // Hinged / overhead leaves sit in the opening plane.
   const n0 = -frameD + 0.5 / 12;
-  if (o.type === "doubleDoor") {
+  if (o.type === "manDoor" && o.variant === "halfLight") {
+    const split = h0 + (h1 - h0) * 0.55;
+    out.push(mk(`${o.id}_leaf`, "doorLeaf", "door", u0 + jambT, u1 - jambT, h0, split, n0, n0 + leafT));
+    out.push(mk(`${o.id}_leaf_top`, "doorLeaf", "door", u0 + jambT, u1 - jambT, split, h1 - jambT, n0, n0 + leafT));
+    out.push(mk(`${o.id}_glass`, "glazing", "glass", u0 + jambT + 0.3, u1 - jambT - 0.3, split + 0.25, h1 - jambT - 0.3, n0 + leafT, n0 + leafT + 0.01));
+  } else if (o.type === "doubleDoor") {
     const mid = (u0 + u1) / 2;
     out.push(mk(`${o.id}_leaf_l`, "doorLeaf", "door", u0 + jambT, mid, h0, h1 - jambT, n0, n0 + leafT));
     out.push(mk(`${o.id}_leaf_r`, "doorLeaf", "door", mid, u1 - jambT, h0, h1 - jambT, n0, n0 + leafT));

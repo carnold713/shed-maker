@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import type { ThreeEvent } from "@react-three/fiber";
+import { useThree, type ThreeEvent } from "@react-three/fiber";
 import type { BoxMember } from "@/lib/geometry";
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1);
@@ -46,6 +46,7 @@ export function InstancedBoxes({
 }) {
   const ref = useRef<THREE.InstancedMesh>(null);
   const count = boxes.length;
+  const invalidate = useThree((s) => s.invalidate);
 
   // Positions/sizes only change when the geometry changes.
   useEffect(() => {
@@ -61,7 +62,8 @@ export function InstancedBoxes({
     }
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [boxes, count]);
+    invalidate();
+  }, [boxes, count, invalidate]);
 
   // Colors change with selection/hover.
   useEffect(() => {
@@ -75,7 +77,8 @@ export function InstancedBoxes({
       mesh.setColorAt(i, tmpColor);
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [boxes, count, selection, hovered, color, selectedColor, hoverColor]);
+    invalidate();
+  }, [boxes, count, selection, hovered, color, selectedColor, hoverColor, invalidate]);
 
   // One material for the life of the component; mutate it so the InstancedMesh is never rebuilt
   // (a rebuilt mesh would lose the per-instance matrices set in the effect above).
@@ -87,7 +90,8 @@ export function InstancedBoxes({
     material.opacity = opacity;
     material.clippingPlanes = clippingPlanes;
     material.needsUpdate = true;
-  }, [material, roughness, metalness, transparent, opacity, clippingPlanes]);
+    invalidate();
+  }, [material, roughness, metalness, transparent, opacity, clippingPlanes, invalidate]);
   useEffect(() => () => material.dispose(), [material]);
 
   if (count === 0) return null;

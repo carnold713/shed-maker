@@ -11,4 +11,4 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 }
 
 export const inputClass =
-  "w-full rounded-md border border-border bg-panel px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-accent";
+  "w-full rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-sm text-foreground outline-none transition focus:border-accent focus:bg-panel focus:ring-2 focus:ring-accent/20";

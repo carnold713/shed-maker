@@ -1,6 +1,6 @@
 import type { Rule, Finding } from "../types";
 import { wallLengthFt } from "@/lib/model/walls";
-import { OVERHEAD_DOOR_HEADROOM_FT } from "@/lib/model/openings";
+import { headroomFor } from "@/lib/model/openings";
 import { postLinesForWall, JAMB_POST_MIN_WIDTH_FT } from "@/lib/framing/postFrame";
 import { formatFtIn } from "@/lib/units";
 
@@ -95,21 +95,21 @@ export const overheadDoorHeadroom: Rule = {
   id: "structural.openings.overheadHeadroom",
   title: "Overhead door headroom",
   source: "Industry",
-  rationale: "A sectional door needs roughly 12\" above the opening for the track and springs, and the trusses bear at the eave; the door head plus headroom must stay below the eave.",
-  applies: (m) => m.openings.some((o) => o.type === "overheadDoor"),
+  rationale: "A sectional door needs roughly 12\" above the opening for the track and springs, a roll-up coil about 18\"; the trusses bear at the eave, so the door head plus headroom must stay below it.",
+  applies: (m) => m.openings.some((o) => headroomFor(o.type) > 0),
   evaluate: (m) =>
     m.openings
-      .filter((o) => o.type === "overheadDoor")
+      .filter((o) => headroomFor(o.type) > 0)
       .flatMap((o) => {
         const w = m.walls.find((x) => x.id === o.wallId);
         if (!w) return [];
-        const need = o.sillFt + o.heightFt + OVERHEAD_DOOR_HEADROOM_FT;
+        const need = o.sillFt + o.heightFt + headroomFor(o.type);
         if (need <= w.heightFt + 1e-9) return [];
         return [
           {
             severity: "error" as const,
             rule: "structural.openings.overheadHeadroom",
-            message: `Overhead door ${formatFtIn(o.widthFt)} × ${formatFtIn(o.heightFt)} needs ${formatFtIn(need)} of wall for track headroom; eave is ${formatFtIn(w.heightFt)}.`,
+            message: `${label(o.type)} ${formatFtIn(o.widthFt)} × ${formatFtIn(o.heightFt)} needs ${formatFtIn(need)} of wall for ${o.type === "rollUpDoor" ? "the coil" : "track headroom"}; eave is ${formatFtIn(w.heightFt)}.`,
             entityIds: [o.id],
             fix: { label: `Raise eave to ${formatFtIn(Math.ceil(need))}`, command: "setEaveHeight", args: { ft: Math.ceil(need) } },
           },
@@ -135,7 +135,7 @@ export const openingFitsWall: Rule = {
 };
 
 function label(type: string) {
-  return { manDoor: "Man door", doubleDoor: "Double door", dutchDoor: "Dutch door", slidingDoor: "Sliding door", overheadDoor: "Overhead door", stallDoor: "Stall door", interiorDoor: "Interior door", window: "Window" }[type] ?? type;
+  return { manDoor: "Man door", doubleDoor: "Double door", dutchDoor: "Dutch door", slidingDoor: "Sliding door", overheadDoor: "Overhead door", rollUpDoor: "Roll-up door", stallDoor: "Stall door", interiorDoor: "Interior door", window: "Window" }[type] ?? type;
 }
 function side(s?: string) {
   return { n: "north", s: "south", e: "east", w: "west" }[s ?? ""] ?? "";

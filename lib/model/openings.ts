@@ -95,6 +95,20 @@ export const OPENING_PRESETS: Record<OpeningType, OpeningPreset> = {
       [16, 12],
     ],
   },
+  rollUpDoor: {
+    type: "rollUpDoor",
+    label: "Roll-up door",
+    widthFt: 10,
+    heightFt: 10,
+    sillFt: 0,
+    swing: "none",
+    sizes: [
+      [8, 8],
+      [10, 10],
+      [12, 12],
+      [14, 14],
+    ],
+  },
   stallDoor: {
     type: "stallDoor",
     label: "Stall door",
@@ -137,7 +151,54 @@ export const OPENING_PRESETS: Record<OpeningType, OpeningPreset> = {
   },
 };
 
-export const DOOR_TYPES: OpeningType[] = ["manDoor", "doubleDoor", "dutchDoor", "slidingDoor", "overheadDoor"];
+export const DOOR_TYPES: OpeningType[] = ["manDoor", "doubleDoor", "dutchDoor", "slidingDoor", "overheadDoor", "rollUpDoor"];
+
+/** Palette entries for the exterior tools (SPEC §4.6–4.7 "a bunch of options"). */
+export interface PaletteEntry {
+  key: string;
+  label: string;
+  type: OpeningType;
+  widthFt: number;
+  heightFt: number;
+  sillFt?: number;
+  swing?: OpeningPreset["swing"];
+  variant?: string;
+}
+
+const f = (a: number, b = 0) => a + b / 12;
+
+export const DOOR_PALETTE: PaletteEntry[] = [
+  { key: "man36", label: `Man 3'0"`, type: "manDoor", widthFt: 3, heightFt: f(6, 8) },
+  { key: "man32", label: `Man 2'8"`, type: "manDoor", widthFt: f(2, 8), heightFt: f(6, 8) },
+  { key: "manHL", label: "Man half-light", type: "manDoor", widthFt: 3, heightFt: f(6, 8), variant: "halfLight" },
+  { key: "dbl6", label: "Double 6'", type: "doubleDoor", widthFt: 6, heightFt: f(6, 8) },
+  { key: "dbl8", label: "Double 8'", type: "doubleDoor", widthFt: 8, heightFt: 7 },
+  { key: "dutch", label: "Dutch 4'", type: "dutchDoor", widthFt: 4, heightFt: 8 },
+  { key: "slide8", label: "Sliding 8×8", type: "slidingDoor", widthFt: 8, heightFt: 8 },
+  { key: "slide10", label: "Sliding 10×10", type: "slidingDoor", widthFt: 10, heightFt: 10 },
+  { key: "slide12", label: "Sliding 12×12", type: "slidingDoor", widthFt: 12, heightFt: 12 },
+  { key: "slideBi16", label: "Bi-parting 16×12", type: "slidingDoor", widthFt: 16, heightFt: 12, swing: "biParting" },
+  { key: "oh9", label: "Overhead 9×8", type: "overheadDoor", widthFt: 9, heightFt: 8 },
+  { key: "oh10", label: "Overhead 10×10", type: "overheadDoor", widthFt: 10, heightFt: 10 },
+  { key: "oh12", label: "Overhead 12×12", type: "overheadDoor", widthFt: 12, heightFt: 12 },
+  { key: "oh16", label: "Overhead 16×12", type: "overheadDoor", widthFt: 16, heightFt: 12 },
+  { key: "ru10", label: "Roll-up 10×10", type: "rollUpDoor", widthFt: 10, heightFt: 10 },
+  { key: "ru12", label: "Roll-up 12×12", type: "rollUpDoor", widthFt: 12, heightFt: 12 },
+];
+
+export const WINDOW_PALETTE: PaletteEntry[] = [
+  { key: "w23", label: "2×3 slider", type: "window", widthFt: 2, heightFt: 3, sillFt: 4, variant: "slider" },
+  { key: "w33", label: "3×3 slider", type: "window", widthFt: 3, heightFt: 3, sillFt: 4, variant: "slider" },
+  { key: "w34", label: "3×4 slider", type: "window", widthFt: 3, heightFt: 4, sillFt: 4, variant: "slider" },
+  { key: "w34sh", label: "3×4 single-hung", type: "window", widthFt: 3, heightFt: 4, sillFt: 4, variant: "singleHung" },
+  { key: "w44", label: "4×4 fixed", type: "window", widthFt: 4, heightFt: 4, sillFt: 4, variant: "fixed" },
+  { key: "w46", label: "4×6 fixed", type: "window", widthFt: 4, heightFt: 6, sillFt: 3, variant: "fixed" },
+  { key: "w64", label: "6×4 picture", type: "window", widthFt: 6, heightFt: 4, sillFt: 3, variant: "fixed" },
+  { key: "w32aw", label: "3×2 awning", type: "window", widthFt: 3, heightFt: 2, sillFt: 5, variant: "awning" },
+  { key: "w62tr", label: "6×2 transom", type: "window", widthFt: 6, heightFt: 2, sillFt: 7, variant: "transom" },
+];
+
+export const WINDOW_VARIANTS = ["slider", "singleHung", "fixed", "awning", "hopper", "transom"] as const;
 
 export function isDoor(type: OpeningType): boolean {
   return type !== "window";
@@ -145,6 +206,17 @@ export function isDoor(type: OpeningType): boolean {
 
 /** Headroom needed above an overhead door for the track and springs, feet (Industry: 12" standard lift). */
 export const OVERHEAD_DOOR_HEADROOM_FT = 1;
+/** Headroom for a roll-up coil door's barrel, feet (Industry: 16–20" for a 10–12' door). */
+export const ROLLUP_DOOR_HEADROOM_FT = 1.5;
+
+export function headroomFor(type: OpeningType): number {
+  return type === "overheadDoor" ? OVERHEAD_DOOR_HEADROOM_FT : type === "rollUpDoor" ? ROLLUP_DOOR_HEADROOM_FT : 0;
+}
+
+/** Doors that get a concrete apron outside (vehicles, carts, hay). */
+export function needsApron(type: OpeningType): boolean {
+  return type === "overheadDoor" || type === "rollUpDoor" || type === "slidingDoor";
+}
 
 /** Sliding door leaf overlaps the opening by this much on each side, feet (SPEC §4.6: 4–6"). */
 export const SLIDING_LEAF_OVERLAP_FT = 0.5;

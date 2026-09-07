@@ -28,10 +28,10 @@ const PRESET_LAYERS: Record<ViewPreset, Layer[]> = {
 
 export type RenderMode = "realistic" | "white";
 
-export type PlanTool = "select" | "pen" | "aisle" | "room" | "erase";
+export type PlanTool = "select" | "pen" | "aisle" | "room" | "door" | "window" | "leanTo" | "erase";
 
 export interface ContextTarget {
-  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone";
+  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone" | "leanTo";
   /** Plan position under the cursor, feet (empty-space menus). */
   planX?: number;
   planY?: number;
@@ -59,6 +59,11 @@ export interface ViewState {
   tool: PlanTool;
   toolSpecies: string;
   toolRoomType: string;
+  /** Palette keys for the door / window tools (see lib/model/openings DOOR_PALETTE / WINDOW_PALETTE). */
+  toolDoorKey: string;
+  toolWindowKey: string;
+  /** Orthographic isometric camera (game-like) instead of perspective. */
+  isometric: boolean;
   /** Grow the building automatically when a zone lands outside it (SPEC §18.2 "Just do it"). */
   autoGrow: boolean;
 
@@ -74,7 +79,10 @@ export interface ViewState {
   setTool: (t: PlanTool) => void;
   setToolSpecies: (s: string) => void;
   setToolRoomType: (t: string) => void;
+  setToolDoorKey: (k: string) => void;
+  setToolWindowKey: (k: string) => void;
   setAutoGrow: (v: boolean) => void;
+  setIsometric: (v: boolean) => void;
 }
 
 export const useViewStore = create<ViewState>()((set) => ({
@@ -88,7 +96,10 @@ export const useViewStore = create<ViewState>()((set) => ({
   tool: "select",
   toolSpecies: "horse",
   toolRoomType: "tack",
+  toolDoorKey: "man36",
+  toolWindowKey: "w34",
   autoGrow: true,
+  isometric: false,
 
   setPreset: (preset) =>
     set({
@@ -113,5 +124,8 @@ export const useViewStore = create<ViewState>()((set) => ({
   setTool: (tool) => set({ tool }),
   setToolSpecies: (toolSpecies) => set({ toolSpecies, tool: "pen" }),
   setToolRoomType: (toolRoomType) => set({ toolRoomType, tool: "room" }),
+  setToolDoorKey: (toolDoorKey) => set({ toolDoorKey, tool: "door" }),
+  setToolWindowKey: (toolWindowKey) => set({ toolWindowKey, tool: "window" }),
   setAutoGrow: (autoGrow) => set({ autoGrow }),
+  setIsometric: (isometric) => set({ isometric }),
 }));

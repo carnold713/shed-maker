@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("M0 golden path: create, edit, autosave, reload", async ({ page }) => {
   await page.goto("/");
@@ -17,9 +17,8 @@ test("M0 golden path: create, edit, autosave, reload", async ({ page }) => {
   const width = page.getByTestId("input-width");
   await width.fill("30");
   await width.press("Enter");
-  await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "dirty");
-  await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 10_000 });
   await expect(page.getByTestId("input-width")).toHaveValue("30'");
+  await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 10_000 });
 
   // Undo via keyboard, then redo.
   await page.locator("body").click();

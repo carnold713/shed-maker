@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("M1 envelope: add openings via context menu, edit, framing view, undo", async ({ page }) => {
   await page.goto("/");
@@ -11,7 +11,7 @@ test("M1 envelope: add openings via context menu, edit, framing view, undo", asy
   await page.getByTestId("plan-wall-s").click({ button: "right" });
   await expect(page.getByTestId("context-menu")).toBeVisible();
   await page.getByRole("menuitem", { name: "Add door" }).hover();
-  await page.getByRole("menuitem", { name: "Sliding barn door" }).click();
+  await page.getByRole("menuitem", { name: "Sliding 8×8" }).click();
   await expect(page.getByTestId("plan-opening-slidingDoor")).toBeVisible();
   await expect(page.getByTestId("opening-width")).toHaveValue("8'");
 
@@ -24,7 +24,7 @@ test("M1 envelope: add openings via context menu, edit, framing view, undo", asy
   // Add a window on the east wall via the context menu.
   await page.getByTestId("plan-wall-e").click({ button: "right", position: { x: 7, y: 60 } });
   await page.getByRole("menuitem", { name: "Add window" }).hover();
-  await page.getByRole("menuitem", { name: /3' × 4'/ }).click();
+  await page.getByRole("menuitem", { name: /3×4 slider/ }).click();
   await expect(page.getByTestId("plan-opening-window")).toBeVisible();
 
   // Right-click the window -> Delete.

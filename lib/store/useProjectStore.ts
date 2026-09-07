@@ -8,6 +8,8 @@ import type { BuildingModel, Frame, FrameSystem, Opening, Roof } from "@/lib/mod
 import * as cmd from "@/lib/model/commands";
 import * as zc from "@/lib/model/zones";
 import { applyLayout, type LayoutOptions, type LayoutPattern } from "@/lib/model/layouts";
+import * as lc from "@/lib/model/leanTos";
+
 import { newId } from "@/lib/model/ids";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
@@ -56,6 +58,10 @@ export interface ProjectState {
   growToFitZones: () => void;
   fitEnvelopeToZones: () => void;
   applyLayout: (pattern: LayoutPattern, opts?: LayoutOptions) => void;
+  addLeanTo: (input: lc.AddLeanToInput) => string | null;
+  updateLeanTo: (id: string, patch: Parameters<typeof lc.updateLeanTo>[2]) => void;
+  removeLeanTo: (id: string) => void;
+  setSlab: (patch: Partial<BuildingModel["foundation"]["slab"]>) => void;
 }
 
 type FramePatch = Partial<{ [K in keyof Frame]: Frame[K] extends object ? Partial<Frame[K]> : Frame[K] }>;
@@ -126,6 +132,17 @@ export const useProjectStore = create<ProjectState>()(
         growToFitZones: () => apply((m) => zc.growToFitZones(m)),
         fitEnvelopeToZones: () => apply((m) => zc.fitEnvelopeToZones(m)),
         applyLayout: (pattern, opts) => apply((m) => applyLayout(m, pattern, opts)),
+        addLeanTo: (input) => {
+          const id = input.id ?? newId("lt");
+          apply((m) => lc.addLeanTo(m, { ...input, id }));
+          return get().model?.leanTos.some((l) => l.id === id) ? id : null;
+        },
+        updateLeanTo: (id, patch) => apply((m) => lc.updateLeanTo(m, id, patch)),
+        removeLeanTo: (id) => {
+          apply((m) => lc.removeLeanTo(m, id));
+          if (get().selection === id) set({ selection: null });
+        },
+        setSlab: (patch) => apply((m) => ({ ...m, foundation: { ...m.foundation, slab: { ...m.foundation.slab, ...patch } }, meta: { ...m.meta, updatedAt: new Date().toISOString() } })),
         transaction: (fn) => {
           const temporal = useProjectStore.temporal.getState();
           const start = get().model;

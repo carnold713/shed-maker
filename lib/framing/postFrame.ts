@@ -9,7 +9,7 @@
 import type { BuildingModel, Wall } from "@/lib/model/schema";
 import { wallLengthFt } from "@/lib/model/walls";
 import { actualFt, stockLength, POST_STOCK_LENGTHS_FT, type LumberSize } from "@/rules/materials/lumber";
-import { OVERHEAD_DOOR_HEADROOM_FT } from "@/lib/model/openings";
+import { headroomFor } from "@/lib/model/openings";
 import { planToWorld } from "@/lib/geometry/frame";
 import type { Vec3 } from "@/lib/geometry/types";
 import type { FramingMember, FramingSet, PostScheduleRow } from "./types";
@@ -232,9 +232,9 @@ export function generatePostFrame(model: BuildingModel): FramingSet {
       const wide = s.u1 - s.u0 >= JAMB_POST_MIN_WIDTH_FT - 1e-9;
       const headerSize: LumberSize = wide ? (s.u1 - s.u0 > 12 ? "2x12" : "2x10") : "2x6";
       const hd = actualFt(headerSize);
-      const headTop = Math.min(H, s.h1 + hd.d + (o.type === "overheadDoor" ? OVERHEAD_DOOR_HEADROOM_FT : 0));
+      const headTop = Math.min(H, s.h1 + hd.d + headroomFor(o.type));
       const headBottom = headTop - hd.d;
-      if (headBottom > s.h1 - 1e-6 || o.type === "overheadDoor") {
+      if (headBottom > s.h1 - 1e-6 || headroomFor(o.type) > 0) {
         members.push(
           wallBox(f, `header_${o.id}`, "header", "framing", headerSize, s.u0, s.u1, Math.max(s.h1, headBottom), Math.max(s.h1, headBottom) + hd.d, girtN0 - hd.t, girtN0, RULES.header, {
             note: `header over ${o.type}`,

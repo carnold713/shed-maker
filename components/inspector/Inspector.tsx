@@ -13,6 +13,8 @@ import { Panel } from "@/components/ui/Panel";
 import { Field, inputClass } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { InteriorPanel, ZoneInspector } from "./ZoneInspector";
+import { FoundationPanel, LeanToInspector } from "./LeanToInspector";
+import { WINDOW_VARIANTS } from "@/lib/model/openings";
 
 /** Numeric input that accepts feet-inches text and commits on blur/Enter. */
 export function FtInput({ value, onCommit, min, max, testId }: { value: number; onCommit: (ft: number) => void; min: number; max: number; testId?: string }) {
@@ -48,6 +50,8 @@ export function Inspector() {
   if (opening) return <OpeningInspector id={opening.id} />;
   const zone = selection ? model.zones.find((z) => z.id === selection) : undefined;
   if (zone) return <ZoneInspector id={zone.id} />;
+  const leanTo = selection ? model.leanTos.find((l) => l.id === selection) : undefined;
+  if (leanTo) return <LeanToInspector id={leanTo.id} />;
   if (selection && selection !== "footprint" && selection !== "roof" && selection !== "foundation") return <MemberInspector id={selection} />;
   return <BuildingInspector />;
 }
@@ -233,6 +237,7 @@ function BuildingInspector() {
         <p className="mt-2 text-[11px] leading-snug text-muted">Trusses are ordered from a truss manufacturer — this gives span, pitch, heel and spacing for the quote.</p>
       </Panel>
 
+      <FoundationPanel />
       <MaterialsPanel />
     </>
   );
@@ -294,9 +299,35 @@ function OpeningInspector({ id }: { id: string }) {
             <FtInput value={o.offsetFt} min={0} max={200} onCommit={(v) => updateOpening(o.id, { offsetFt: v })} testId="opening-offset" />
           </Field>
           {o.type === "window" ? (
-            <Field label="Sill">
-              <FtInput value={o.sillFt} min={0} max={20} onCommit={(v) => updateOpening(o.id, { sillFt: v })} />
-            </Field>
+            <>
+              <Field label="Sill">
+                <FtInput value={o.sillFt} min={0} max={20} onCommit={(v) => updateOpening(o.id, { sillFt: v })} />
+              </Field>
+              <Field label="Style">
+                <select className={inputClass} value={o.variant ?? "slider"} onChange={(e) => updateOpening(o.id, { variant: e.target.value })}>
+                  {WINDOW_VARIANTS.map((v) => (
+                    <option key={v} value={v}>
+                      {{ slider: "Slider", singleHung: "Single-hung", fixed: "Fixed", awning: "Awning", hopper: "Hopper", transom: "Transom" }[v]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </>
+          ) : o.type === "manDoor" ? (
+            <>
+              <Field label="Swing">
+                <select className={inputClass} value={o.swing} onChange={(e) => updateOpening(o.id, { swing: e.target.value as typeof o.swing })}>
+                  <option value="in">In</option>
+                  <option value="out">Out</option>
+                </select>
+              </Field>
+              <Field label="Style">
+                <select className={inputClass} value={o.variant ?? "solid"} onChange={(e) => updateOpening(o.id, { variant: e.target.value })}>
+                  <option value="solid">Solid steel</option>
+                  <option value="halfLight">Half-light</option>
+                </select>
+              </Field>
+            </>
           ) : (
             <Field label={o.type === "slidingDoor" || o.type === "stallDoor" ? "Slides" : "Swing"}>
               <select className={inputClass} value={o.swing} onChange={(e) => updateOpening(o.id, { swing: e.target.value as typeof o.swing })}>
@@ -306,8 +337,8 @@ function OpeningInspector({ id }: { id: string }) {
                     <option value="slideRight">Right</option>
                     <option value="biParting">Bi-parting</option>
                   </>
-                ) : o.type === "overheadDoor" ? (
-                  <option value="none">Overhead</option>
+                ) : o.type === "overheadDoor" || o.type === "rollUpDoor" ? (
+                  <option value="none">{o.type === "rollUpDoor" ? "Roll-up coil" : "Sectional overhead"}</option>
                 ) : (
                   <>
                     <option value="in">In</option>

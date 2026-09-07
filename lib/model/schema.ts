@@ -152,6 +152,7 @@ export const OpeningType = z.enum([
   "dutchDoor",
   "slidingDoor",
   "overheadDoor",
+  "rollUpDoor",
   "stallDoor",
   "interiorDoor",
   "window",
@@ -174,6 +175,8 @@ export const Opening = z.object({
   tag: z.string().optional(),
   /** Set when the opening belongs to a pen's outside access; it follows the pen (SPEC §18.2). */
   zoneId: Id.optional(),
+  /** Style within the type: man door "solid"|"halfLight"; window "slider"|"singleHung"|"fixed"|"awning"|"hopper"|"transom". */
+  variant: z.string().optional(),
 });
 export type Opening = z.infer<typeof Opening>;
 
@@ -204,9 +207,18 @@ export type Roof = z.infer<typeof Roof>;
 export const LeanTo = z.object({
   id: Id,
   side: z.enum(["n", "s", "e", "w"]),
+  /** Projection from the wall, feet. */
   depthFt: z.number().positive(),
   pitch: z.number().min(0.5).max(12).default(3),
   enclosed: z.boolean().default(false),
+  /** Start along the wall (from the wall's start corner) and run length; omitted = the full wall. */
+  offsetFt: z.number().nonnegative().optional(),
+  lengthFt: z.number().positive().optional(),
+  /** Concrete pad under the lean-to. */
+  slab: z.boolean().default(true),
+  /** Drop of the lean-to roof attachment below the main eave, inches. */
+  dropIn: z.number().nonnegative().default(6),
+  postSize: z.enum(["4x4", "4x6", "6x6"]).default("6x6"),
 });
 export type LeanTo = z.infer<typeof LeanTo>;
 
@@ -229,6 +241,11 @@ export const Foundation = z.object({
       vaporBarrier: z.boolean().default(true),
       reinforcement: z.enum(["none", "mesh", "rebar", "fiber"]).default("mesh"),
       zones: z.array(SlabZone).default([]),
+      /** Concrete aprons outside overhead / roll-up / sliding doors (SPEC §4.8). */
+      aprons: z.boolean().default(true),
+      apronDepthFt: z.number().positive().default(8),
+      /** Finished floor above grade, inches (SPEC §6.2: 4–6"). */
+      aboveGradeIn: z.number().nonnegative().default(6),
     })
     .prefault({}),
   postBaySpacingFt: z.number().positive().default(8),

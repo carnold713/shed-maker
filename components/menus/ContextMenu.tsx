@@ -76,14 +76,36 @@ function MenuList({ items, onClose }: { items: MenuItem[]; onClose: () => void }
               <span>{it.label}</span>
               {it.children ? <span className="text-muted">›</span> : it.shortcut ? <span className="font-mono text-[11px] text-muted">{it.shortcut}</span> : null}
             </button>
-            {it.children && open === i ? (
-              <div className="absolute left-full top-0 -ml-1 min-w-44 rounded-md border border-border bg-panel py-1 shadow-lg">
-                <MenuList items={it.children} onClose={onClose} />
-              </div>
-            ) : null}
+            {it.children && open === i ? <Submenu items={it.children} onClose={onClose} /> : null}
           </li>
         ),
       )}
     </ul>
+  );
+}
+
+/** Submenu that flips upward and scrolls when it would run off the viewport. */
+function Submenu({ items, onClose }: { items: MenuItem[]; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<React.CSSProperties>({ top: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const next: React.CSSProperties = {};
+    if (r.bottom > window.innerHeight - 8) {
+      const overflow = r.bottom - (window.innerHeight - 8);
+      next.top = -Math.min(overflow, r.top - 8);
+    } else next.top = 0;
+    if (r.right > window.innerWidth - 8) {
+      next.left = "auto";
+      next.right = "100%";
+    }
+    setStyle(next);
+  }, []);
+  return (
+    <div ref={ref} className="absolute left-full -ml-1 max-h-[80vh] min-w-44 overflow-y-auto rounded-md border border-border bg-panel py-1 shadow-lg" style={style}>
+      <MenuList items={items} onClose={onClose} />
+    </div>
   );
 }

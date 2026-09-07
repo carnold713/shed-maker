@@ -116,6 +116,8 @@ export interface AddOpeningInput {
   widthFt?: number;
   heightFt?: number;
   sillFt?: number;
+  swing?: Opening["swing"];
+  variant?: string;
   id?: string;
 }
 
@@ -137,8 +139,9 @@ export function addOpening(model: BuildingModel, input: AddOpeningInput): Buildi
     widthFt,
     heightFt: input.heightFt ?? preset.heightFt,
     sillFt: input.sillFt ?? preset.sillFt,
-    swing: preset.swing,
+    swing: input.swing ?? preset.swing,
     hardware: [],
+    variant: input.variant,
   });
   return touch({ ...model, openings: [...model.openings, opening] });
 }

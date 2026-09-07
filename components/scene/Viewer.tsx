@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Grid } from "@react-three/drei";
+import { OrbitControls, OrthographicCamera } from "@react-three/drei";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useProjectStore } from "@/lib/store/useProjectStore";
@@ -9,6 +9,10 @@ import { useViewStore, ALL_LAYERS, LAYER_LABEL, type ViewPreset } from "@/lib/st
 import { useDerived } from "@/lib/store/useDerived";
 import { BuildingScene } from "./BuildingScene";
 import { FitCamera } from "./FitCamera";
+import { Ground } from "./Ground";
+import { Lighting } from "./Lighting";
+import { createRenderer } from "./renderer";
+import { ClipGroup } from "./ClipGroup";
 import { formatFtIn } from "@/lib/units";
 
 const PRESETS: { id: ViewPreset; label: string }[] = [
@@ -34,13 +38,18 @@ export function Viewer() {
   const fitNonce = useViewStore((s) => s.fitNonce);
   const openContextMenu = useViewStore((s) => s.openContextMenu);
   const select = useProjectStore((s) => s.select);
+  const iso = useViewStore((s) => s.isometric);
+  const setIso = useViewStore((s) => s.setIsometric);
   const glRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.Camera | null>(null);
 
   const clippingPlanes = useMemo(() => (cut === null ? [] : [new THREE.Plane(new THREE.Vector3(0, -1, 0), cut)]), [cut]);
 
   const screenshot = useCallback(() => {
     const gl = glRef.current;
     if (!gl) return;
+    if (sceneRef.current && cameraRef.current) gl.render(sceneRef.current, cameraRef.current);
     const url = gl.domElement.toDataURL("image/png");
     const a = document.createElement("a");
     a.href = url;
@@ -54,23 +63,30 @@ export function Viewer() {
 
   if (!model || !geometry) return null;
 
-  const [minX, , minZ] = geometry.bounds.min;
-  const [maxX, , maxZ] = geometry.bounds.max;
+  const [minX, minY, minZ] = geometry.bounds.min;
+  const [maxX, maxY, maxZ] = geometry.bounds.max;
   const cx = (minX + maxX) / 2;
   const cz = (minZ + maxZ) / 2;
+  const radius = Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2;
   const eave = model.eaveHeightFt;
+  const grade = -(model.foundation.slab.aboveGradeIn / 12);
 
   return (
     <div className="relative h-full w-full" data-testid="viewer">
       <Canvas
-        shadows
-        flat
-        camera={{ position: [cx + 60, 40, cz + 70], fov: 38, near: 0.1, far: 2000 }}
+        frameloop="demand"
+        shadows="soft"
+        camera={{ position: [cx + 60, 40, cz + 70], fov: 34, near: 0.1, far: 2000 }}
         dpr={[1, 2]}
-        gl={{ antialias: true, preserveDrawingBuffer: true, localClippingEnabled: true }}
-        onCreated={({ gl }) => {
-          glRef.current = gl;
+        gl={createRenderer}
+        onCreated={({ gl, scene, camera }) => {
+          glRef.current = gl as THREE.WebGLRenderer;
+          sceneRef.current = scene;
+          cameraRef.current = camera;
           gl.localClippingEnabled = true;
+          gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.toneMappingExposure = 1.05;
+          gl.shadowMap.type = THREE.PCFSoftShadowMap;
         }}
         onPointerMissed={(e) => {
           if (e.button === 2) {
@@ -80,28 +96,32 @@ export function Viewer() {
         }}
         onContextMenu={(e) => e.preventDefault()}
       >
-        <color attach="background" args={["#e9eef2"]} />
-        <ambientLight intensity={0.35} />
-        <hemisphereLight args={["#ffffff", "#8f9aa5", 0.9]} />
-        <directionalLight position={[cx + 40, 60, cz + 30]} intensity={1.8} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-80} shadow-camera-right={80} shadow-camera-top={80} shadow-camera-bottom={-80} />
-        <FitCamera bounds={geometry.bounds} nonce={fitNonce} preset={preset} eaveFt={eave} />
-        <BuildingScene geometry={geometry} materials={model.materials} clippingPlanes={clippingPlanes} />
-        <Grid position={[cx, -0.01, cz]} args={[400, 400]} cellSize={2} sectionSize={10} cellColor="#c7ced4" sectionColor="#9aa5ad" fadeDistance={220} infiniteGrid />
+        <Lighting center={[cx, 0, cz]} radius={radius} />
+        {iso ? <OrthographicCamera makeDefault position={[cx + 80, 70, cz + 80]} zoom={8} near={-500} far={1000} /> : null}
+        <FitCamera bounds={geometry.bounds} nonce={fitNonce} preset={preset} eaveFt={eave} iso={iso} />
+        <ClipGroup planes={clippingPlanes}>
+          <BuildingScene geometry={geometry} materials={model.materials} clippingPlanes={clippingPlanes} />
+          <Ground center={[cx, cz]} grade={grade} clippingPlanes={clippingPlanes} />
+        </ClipGroup>
         <OrbitControls maxPolarAngle={Math.PI / 2 - 0.02} minDistance={2} maxDistance={400} makeDefault mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />
         <ClipShadowFix />
       </Canvas>
 
       {/* View presets */}
-      <div className="absolute left-3 top-3 flex items-center gap-1 rounded-md border border-border bg-panel/95 p-0.5 text-xs shadow-sm" data-testid="view-presets">
+      <div className="glass absolute left-3 top-3 flex items-center gap-1 p-1 text-xs" data-testid="view-presets">
         {PRESETS.map((p) => (
-          <button key={p.id} onClick={() => setPreset(p.id)} aria-pressed={preset === p.id} className={`rounded px-2 py-1 ${preset === p.id ? "bg-foreground text-background" : "text-muted hover:text-foreground"}`}>
+          <button key={p.id} onClick={() => setPreset(p.id)} aria-pressed={preset === p.id} className={`chip ${preset === p.id ? "chip-on" : ""}`}>
             {p.label}
           </button>
         ))}
+        <span className="mx-1 h-4 w-px bg-border" />
+        <button onClick={() => setIso(!iso)} aria-pressed={iso} className={`chip ${iso ? "chip-on" : ""}`} title="Isometric camera (I)" data-testid="iso-toggle">
+          Iso
+        </button>
       </div>
 
       {/* Layers */}
-      <details className="absolute right-3 top-3 rounded-md border border-border bg-panel/95 text-xs shadow-sm">
+      <details className="glass absolute right-3 top-3 text-xs">
         <summary className="cursor-pointer select-none px-2 py-1 text-muted">Layers</summary>
         <ul className="px-2 pb-2">
           {ALL_LAYERS.map((l) => (
@@ -116,7 +136,7 @@ export function Viewer() {
       </details>
 
       {/* Cutaway */}
-      <div className="absolute bottom-8 left-3 flex items-center gap-2 rounded-md border border-border bg-panel/95 px-2 py-1 text-xs shadow-sm">
+      <div className="glass absolute bottom-8 left-3 flex items-center gap-2 px-2 py-1 text-xs">
         <label className="flex items-center gap-1">
           <input type="checkbox" checked={cut !== null} onChange={(e) => setCut(e.target.checked ? 4 : null)} data-testid="cut-toggle" />
           Cut at

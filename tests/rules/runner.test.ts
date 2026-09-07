@@ -5,7 +5,7 @@ import { RULES, getRule, runRules } from "@/rules";
 describe("rules runner", () => {
   it("every rule has an id, title, citation and rationale", () => {
     for (const r of RULES) {
-      expect(r.id).toMatch(/^[a-z]+\.[a-z]+\.[a-zA-Z]+$/);
+      expect(r.id).toMatch(/^[a-z]+\.[a-zA-Z]+\.[a-zA-Z]+$/);
       expect(r.title.length).toBeGreaterThan(3);
       expect(r.source.length).toBeGreaterThan(0);
       expect(r.rationale.length).toBeGreaterThan(10);

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("M3 interior: stamp pens, layout generator, grow/fit envelope, edit and delete", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 860 });
