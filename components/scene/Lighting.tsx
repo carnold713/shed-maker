@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -62,11 +62,32 @@ export function Lighting({ center, radius }: { center: [number, number, number];
   // The shadow frustum must cover everything that receives shadows (the whole ground plate),
   // otherwise the map's edge texels smear across the uncovered area.
   const shadowExtent = GROUND_SIZE_FT / 2 + 12;
+  const keyRef = useRef<THREE.DirectionalLight>(null);
+
+  // The WebGL shadow-map code rebuilds the shadow camera's projection when it creates the map;
+  // the WebGPU backend does not, so do it explicitly whenever the frustum changes.
+  useEffect(() => {
+    const light = keyRef.current;
+    if (!light) return;
+    const cam = light.shadow.camera;
+    cam.left = -shadowExtent;
+    cam.right = shadowExtent;
+    cam.top = shadowExtent;
+    cam.bottom = -shadowExtent;
+    cam.near = 1;
+    cam.far = 400;
+    cam.updateProjectionMatrix();
+    light.target.position.set(cx, 0, cz);
+    light.target.updateMatrixWorld();
+    light.shadow.needsUpdate = true;
+    invalidate();
+  }, [shadowExtent, cx, cz, invalidate]);
   return (
     <>
       <hemisphereLight args={["#fff4e6", "#b9c4cf", 0.55]} />
       <directionalLight
-        position={[cx + 60, 110, cz + 90]}
+        ref={keyRef}
+        position={[cx - 45, 110, cz + 85]}
         intensity={2.4}
         color="#fff1dc"
         castShadow
