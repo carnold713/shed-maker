@@ -2,17 +2,27 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "@/lib/store/useProjectStore";
+import { useViewStore } from "@/lib/store/useViewStore";
+import { useDerived } from "@/lib/store/useDerived";
+import { wallFrame } from "@/lib/framing/wallFrame";
 import { formatFtIn } from "@/lib/units";
+import type { Opening, Wall } from "@/lib/model/schema";
 
 /**
- * Top-down plan in SVG. Plan +y is north and renders UP the screen.
- * Drag the east or north edge handle to resize the footprint (snaps to 1').
+ * Top-down plan in SVG (SPEC §3.4, §21). Plan +y is north and renders UP the
+ * screen. Drag the east/north handles to resize the footprint; drag openings
+ * along their wall; right-click walls and openings for context menus.
  */
 export function PlanView() {
   const model = useProjectStore((s) => s.model);
   const selection = useProjectStore((s) => s.selection);
   const select = useProjectStore((s) => s.select);
   const setFootprintRect = useProjectStore((s) => s.setFootprintRect);
+  const moveOpening = useProjectStore((s) => s.moveOpening);
+  const openContextMenu = useViewStore((s) => s.openContextMenu);
+  const hovered = useViewStore((s) => s.hovered);
+  const setHovered = useViewStore((s) => s.setHovered);
+  const { framing } = useDerived();
   const wrapRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 600, h: 400 });
 
@@ -31,40 +41,85 @@ export function PlanView() {
   const W = fp?.kind === "rect" ? fp.wFt : 0;
   const D = fp?.kind === "rect" ? fp.dFt : 0;
 
-  // Fit the footprint with margin for dimension strings.
-  const margin = 48;
+  const margin = 56;
   const scale = useMemo(() => {
     if (!W || !D) return 10;
     return Math.max(0.5, Math.min((size.w - 2 * margin) / W, (size.h - 2 * margin) / D));
   }, [W, D, size]);
   const ox = (size.w - W * scale) / 2;
-  const oy = (size.h + D * scale) / 2; // plan y=0 at the bottom
-  const px = (x: number) => ox + x * scale;
-  const py = (y: number) => oy - y * scale;
+  const oy = (size.h + D * scale) / 2;
+  const px = useCallback((x: number) => ox + x * scale, [ox, scale]);
+  const py = useCallback((y: number) => oy - y * scale, [oy, scale]);
+  const toPlan = useCallback(
+    (e: React.PointerEvent | React.MouseEvent, svg: SVGSVGElement) => {
+      const rect = svg.getBoundingClientRect();
+      return { x: (e.clientX - rect.left - ox) / scale, y: (oy - (e.clientY - rect.top)) / scale };
+    },
+    [ox, oy, scale],
+  );
 
-  const [drag, setDrag] = useState<null | { edge: "e" | "n" }>(null);
+  type Drag = { kind: "edge"; edge: "e" | "n" } | { kind: "opening"; id: string; wallId: string; grabOffsetFt: number };
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const dragRef = useRef<Drag | null>(null);
+  const endDrag = useRef<(() => void) | null>(null);
+
+  const beginDrag = (d: Drag) => {
+    dragRef.current = d;
+    setDrag(d);
+    // Coalesce the whole drag into one undo step.
+    const start = useProjectStore.getState().model;
+    useProjectStore.temporal.getState().pause();
+    endDrag.current = () => {
+      const st = useProjectStore.getState();
+      const end = st.model;
+      const temporal = useProjectStore.temporal.getState();
+      if (start && end && end !== start) {
+        useProjectStore.setState({ model: start });
+        temporal.resume();
+        useProjectStore.setState({ model: end });
+      } else temporal.resume();
+      endDrag.current = null;
+    };
+  };
+  const finishDrag = () => {
+    endDrag.current?.();
+    dragRef.current = null;
+    setDrag(null);
+  };
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
-      if (!drag || !model) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = (e.clientX - rect.left - ox) / scale;
-      const y = (oy - (e.clientY - rect.top)) / scale;
-      const snap = (v: number) => Math.round(v);
-      if (drag.edge === "e") setFootprintRect(snap(x), D);
-      else setFootprintRect(W, snap(y));
+      const d = dragRef.current;
+      if (!d || !model) return;
+      const p = toPlan(e, e.currentTarget);
+      if (d.kind === "edge") {
+        if (d.edge === "e") setFootprintRect(Math.round(p.x), D);
+        else setFootprintRect(W, Math.round(p.y));
+      } else {
+        const wall = model.walls.find((w) => w.id === d.wallId);
+        if (!wall) return;
+        const f = wallFrame(wall);
+        const u = (p.x - wall.start.x) * f.dir.x + (p.y - wall.start.y) * f.dir.y;
+        const snap = e.shiftKey ? 1 : 1 / 12;
+        moveOpening(d.id, Math.round((u - d.grabOffsetFt) / snap) * snap);
+      }
     },
-    [drag, model, ox, oy, scale, D, W, setFootprintRect],
+    [model, toPlan, setFootprintRect, moveOpening, D, W],
   );
 
   if (!model || fp?.kind !== "rect") {
     return <div className="flex h-full items-center justify-center text-sm text-muted">No footprint</div>;
   }
 
-  const wallT = (model.walls[0]?.thicknessIn ?? 5.5) / 12;
+  const wallT = 0.5; // drawn wall thickness in feet (post + girts ≈ 7")
   const gridStep = scale >= 12 ? 1 : scale >= 4 ? 2 : 4;
   const gridLines: number[] = [];
   for (let g = 0; g <= Math.max(W, D); g += gridStep) gridLines.push(g);
+  const posts = framing?.posts ?? [];
+  const postHalf = (5.5 / 24) * scale;
+  const bay = model.frame.bayFt;
+
+  const wallAt = (w: Wall) => ({ f: wallFrame(w), w });
 
   return (
     <div ref={wrapRef} className="relative h-full w-full select-none overflow-hidden">
@@ -73,10 +128,14 @@ export function PlanView() {
         height={size.h}
         className="block"
         onPointerMove={onPointerMove}
-        onPointerUp={() => setDrag(null)}
-        onPointerLeave={() => setDrag(null)}
+        onPointerUp={finishDrag}
+        onPointerLeave={finishDrag}
         onClick={(e) => {
           if (e.target === e.currentTarget) select(null);
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (e.target === e.currentTarget) openContextMenu({ kind: "empty", x: e.clientX, y: e.clientY, from: "plan" });
         }}
         data-testid="plan-svg"
       >
@@ -90,36 +149,139 @@ export function PlanView() {
           ))}
         </g>
 
-        {/* slab */}
-        {model.foundation.slab.enabled ? (
-          <rect x={px(0)} y={py(D)} width={W * scale} height={D * scale} fill="#d9d6cf" opacity={0.5} />
-        ) : null}
-
-        {/* exterior walls (double line) */}
-        <g
-          onClick={() => select("footprint")}
-          className="cursor-pointer"
-          stroke={selection === "footprint" ? "#b5532a" : "#1c1b19"}
-          strokeWidth={Math.max(1.5, wallT * scale)}
-          fill="none"
-        >
-          <rect x={px(0)} y={py(D)} width={W * scale} height={D * scale} />
+        {/* bay lines (post grid) */}
+        <g stroke="#d3cfc7" strokeWidth={1} strokeDasharray="2 3">
+          {model.roof.ridgeAxis === "ns"
+            ? Array.from({ length: Math.ceil(D / bay) - 1 }, (_, i) => (i + 1) * bay).map((y) => <line key={y} x1={px(0)} y1={py(y)} x2={px(W)} y2={py(y)} />)
+            : Array.from({ length: Math.ceil(W / bay) - 1 }, (_, i) => (i + 1) * bay).map((x) => <line key={x} x1={px(x)} y1={py(0)} x2={px(x)} y2={py(D)} />)}
         </g>
+
+        {/* slab */}
+        {model.foundation.slab.enabled ? <rect x={px(0)} y={py(D)} width={W * scale} height={D * scale} fill="#d9d6cf" opacity={0.5} /> : null}
+
+        {/* exterior walls: thick line inside the plan line, with gaps at openings */}
+        {model.walls
+          .filter((w) => w.role === "exterior")
+          .map((w) => {
+            const { f } = wallAt(w);
+            const spans = model.openings.filter((o) => o.wallId === w.id).sort((a, b) => a.offsetFt - b.offsetFt);
+            const segs: [number, number][] = [];
+            let c = 0;
+            for (const o of spans) {
+              if (o.offsetFt > c) segs.push([c, o.offsetFt]);
+              c = o.offsetFt + o.widthFt;
+            }
+            if (c < f.lengthFt) segs.push([c, f.lengthFt]);
+            const inset = -wallT / 2; // wall body sits inside the plan line
+            const pt = (u: number) => ({ x: px(w.start.x + f.dir.x * u + f.normal.x * inset), y: py(w.start.y + f.dir.y * u + f.normal.y * inset) });
+            const isSel = selection === "footprint" || selection === w.id;
+            return (
+              <g
+                key={w.id}
+                className="cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  select("footprint");
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const p = toPlan(e, e.currentTarget.ownerSVGElement!);
+                  const u = (p.x - w.start.x) * f.dir.x + (p.y - w.start.y) * f.dir.y;
+                  select("footprint");
+                  openContextMenu({ kind: "wall", id: w.id, uFt: Math.max(0, Math.min(f.lengthFt, u)), x: e.clientX, y: e.clientY, from: "plan" });
+                }}
+                data-testid={`plan-wall-${w.side}`}
+              >
+                {/* fat invisible hit area (a polygon so it has a real bounding box) */}
+                <polygon points={hitBand(w, f, 0, f.lengthFt, Math.max(14, wallT * scale * 2) / scale, px, py)} fill="transparent" />
+                {segs.map(([a, b], i) => (
+                  <line key={i} x1={pt(a).x} y1={pt(a).y} x2={pt(b).x} y2={pt(b).y} stroke={isSel ? "#b5532a" : "#1c1b19"} strokeWidth={Math.max(2, wallT * scale)} />
+                ))}
+              </g>
+            );
+          })}
+
+        {/* posts */}
+        <g>
+          {posts.map((p) => (
+            <rect
+              key={p.id}
+              x={px(p.x) - postHalf}
+              y={py(p.y) - postHalf}
+              width={postHalf * 2}
+              height={postHalf * 2}
+              fill={selection === p.id || hovered === p.id ? "#b5532a" : p.role === "jamb" ? "#7a5a2e" : "#3a3835"}
+              stroke="#f6f5f2"
+              strokeWidth={0.5}
+              className="cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                select(p.id);
+              }}
+              onMouseEnter={() => setHovered(p.id)}
+              onMouseLeave={() => setHovered(null)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                select(p.id);
+                openContextMenu({ kind: "member", id: p.id, x: e.clientX, y: e.clientY, from: "plan" });
+              }}
+            >
+              <title>{`${p.role} post ${p.nominal} · ${formatFtIn(p.x)}, ${formatFtIn(p.y)}`}</title>
+            </rect>
+          ))}
+        </g>
+
+        {/* openings */}
+        {model.openings.map((o) => {
+          const w = model.walls.find((x) => x.id === o.wallId);
+          if (!w) return null;
+          return (
+            <OpeningSymbol
+              key={o.id}
+              o={o}
+              w={w}
+              px={px}
+              py={py}
+              scale={scale}
+              wallT={wallT}
+              selected={selection === o.id}
+              hovered={hovered === o.id}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+                select(o.id);
+                const p = toPlan(e, (e.currentTarget as SVGElement).ownerSVGElement!);
+                const f = wallFrame(w);
+                const u = (p.x - w.start.x) * f.dir.x + (p.y - w.start.y) * f.dir.y;
+                beginDrag({ kind: "opening", id: o.id, wallId: w.id, grabOffsetFt: u - o.offsetFt });
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                select(o.id);
+                openContextMenu({ kind: "opening", id: o.id, x: e.clientX, y: e.clientY, from: "plan" });
+              }}
+              onHover={(h) => setHovered(h ? o.id : null)}
+            />
+          );
+        })}
 
         {/* ridge line */}
         {model.roof.form === "gable" ? (
           model.roof.ridgeAxis === "ns" ? (
-            <line x1={px(W / 2)} y1={py(0)} x2={px(W / 2)} y2={py(D)} stroke="#9a9790" strokeDasharray="6 4" />
+            <line x1={px(W / 2)} y1={py(0)} x2={px(W / 2)} y2={py(D)} stroke="#9a9790" strokeDasharray="6 4" pointerEvents="none" />
           ) : (
-            <line x1={px(0)} y1={py(D / 2)} x2={px(W)} y2={py(D / 2)} stroke="#9a9790" strokeDasharray="6 4" />
+            <line x1={px(0)} y1={py(D / 2)} x2={px(W)} y2={py(D / 2)} stroke="#9a9790" strokeDasharray="6 4" pointerEvents="none" />
           )
         ) : null}
 
         {/* dimensions */}
-        <Dimension x1={px(0)} y1={py(0) + 22} x2={px(W)} y2={py(0) + 22} label={formatFtIn(W)} />
-        <Dimension x1={px(W) + 22} y1={py(0)} x2={px(W) + 22} y2={py(D)} label={formatFtIn(D)} vertical />
+        <Dimension x1={px(0)} y1={py(0) + 26} x2={px(W)} y2={py(0) + 26} label={formatFtIn(W)} />
+        <Dimension x1={px(W) + 26} y1={py(0)} x2={px(W) + 26} y2={py(D)} label={formatFtIn(D)} vertical />
 
-        {/* drag handles */}
+        {/* footprint drag handles */}
         <g>
           <rect
             x={px(W) - 5}
@@ -130,9 +292,10 @@ export function PlanView() {
             fill="#b5532a"
             className="cursor-ew-resize"
             onPointerDown={(e) => {
+              e.stopPropagation();
               e.currentTarget.setPointerCapture(e.pointerId);
-              setDrag({ edge: "e" });
               select("footprint");
+              beginDrag({ kind: "edge", edge: "e" });
             }}
             data-testid="handle-e"
           />
@@ -145,16 +308,17 @@ export function PlanView() {
             fill="#b5532a"
             className="cursor-ns-resize"
             onPointerDown={(e) => {
+              e.stopPropagation();
               e.currentTarget.setPointerCapture(e.pointerId);
-              setDrag({ edge: "n" });
               select("footprint");
+              beginDrag({ kind: "edge", edge: "n" });
             }}
             data-testid="handle-n"
           />
         </g>
 
         {/* north arrow */}
-        <g transform={`translate(${size.w - 28}, 36) rotate(${-model.site.orientationDeg})`} fill="#1c1b19">
+        <g transform={`translate(${size.w - 28}, 36) rotate(${-model.site.orientationDeg})`} fill="#1c1b19" pointerEvents="none">
           <polygon points="0,-14 6,6 0,2 -6,6" />
           <text y={20} textAnchor="middle" fontSize={10}>
             N
@@ -162,10 +326,135 @@ export function PlanView() {
         </g>
       </svg>
       <div className="pointer-events-none absolute bottom-2 left-3 font-mono text-[11px] text-muted">
-        {formatFtIn(W)} × {formatFtIn(D)} · {W * D} sq ft · 1 grid = {gridStep}&apos;
+        {formatFtIn(W)} × {formatFtIn(D)} · {W * D} sq ft · {posts.length} posts · {bay}&apos; bays · grid {gridStep}&apos;
+        {drag?.kind === "opening" ? " · Shift = 1' snap" : ""}
       </div>
     </div>
   );
+}
+
+function OpeningSymbol({
+  o,
+  w,
+  px,
+  py,
+  scale,
+  wallT,
+  selected,
+  hovered,
+  onPointerDown,
+  onContextMenu,
+  onHover,
+}: {
+  o: Opening;
+  w: Wall;
+  px: (x: number) => number;
+  py: (y: number) => number;
+  scale: number;
+  wallT: number;
+  selected: boolean;
+  hovered: boolean;
+  onPointerDown: (e: React.PointerEvent<SVGGElement>) => void;
+  onContextMenu: (e: React.MouseEvent<SVGGElement>) => void;
+  onHover: (h: boolean) => void;
+}) {
+  const f = wallFrame(w);
+  const u0 = o.offsetFt;
+  const u1 = o.offsetFt + o.widthFt;
+  const P = (u: number, n: number) => ({ x: px(w.start.x + f.dir.x * u + f.normal.x * n), y: py(w.start.y + f.dir.y * u + f.normal.y * n) });
+  const color = selected ? "#b5532a" : hovered ? "#d98a5f" : "#1c1b19";
+  const angleDeg = (-f.angle * 180) / Math.PI; // SVG y is down
+  const isWindow = o.type === "window";
+  const isSliding = o.type === "slidingDoor" || o.type === "stallDoor";
+  const isOverhead = o.type === "overheadDoor";
+  const swingOut = o.swing === "out";
+  const inset = -wallT / 2;
+
+  return (
+    <g className="cursor-grab" onPointerDown={onPointerDown} onContextMenu={onContextMenu} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)} data-testid={`plan-opening-${o.type}`}>
+      {/* hit area across the opening */}
+      <polygon points={hitBand(w, f, u0, u1, Math.max(16, wallT * scale * 2) / scale, px, py)} fill="transparent" />
+      {isWindow ? (
+        <g stroke={color} strokeWidth={1.5}>
+          <line x1={P(u0, 0).x} y1={P(u0, 0).y} x2={P(u1, 0).x} y2={P(u1, 0).y} />
+          <line x1={P(u0, -wallT).x} y1={P(u0, -wallT).y} x2={P(u1, -wallT).x} y2={P(u1, -wallT).y} />
+          <line x1={P(u0, inset).x} y1={P(u0, inset).y} x2={P(u1, inset).x} y2={P(u1, inset).y} strokeWidth={1} />
+        </g>
+      ) : isSliding ? (
+        <g>
+          {/* leaf outside the wall, wider than the opening; arrow shows slide direction */}
+          {(() => {
+            const ov = 0.5;
+            const dir = o.swing === "slideLeft" ? -1 : 1;
+            const l0 = o.swing === "biParting" ? u0 - ov : u0 - ov;
+            const l1 = u1 + ov;
+            const n0 = 0.25;
+            const n1 = 0.25 + 0.15;
+            const c = [P(l0, n0), P(l1, n0), P(l1, n1), P(l0, n1)];
+            const mid = P((u0 + u1) / 2, n0 + 0.075);
+            const arrowLen = Math.min(o.widthFt * 0.3, 2) * scale * dir;
+            return (
+              <>
+                <polygon points={c.map((p) => `${p.x},${p.y}`).join(" ")} fill="#fff" stroke={color} strokeWidth={1.5} />
+                <g transform={`translate(${mid.x} ${mid.y}) rotate(${angleDeg})`}>
+                  {o.swing === "biParting" ? (
+                    <>
+                      <path d={`M 0 0 L ${-arrowLen} 0`} stroke={color} strokeWidth={1.5} markerEnd="url(#arrow)" />
+                      <path d={`M 0 0 L ${arrowLen} 0`} stroke={color} strokeWidth={1.5} markerEnd="url(#arrow)" />
+                    </>
+                  ) : (
+                    <path d={`M ${-arrowLen} 0 L ${arrowLen} 0`} stroke={color} strokeWidth={1.5} markerEnd="url(#arrow)" />
+                  )}
+                </g>
+              </>
+            );
+          })()}
+        </g>
+      ) : isOverhead ? (
+        <g stroke={color} strokeWidth={3}>
+          <line x1={P(u0, inset).x} y1={P(u0, inset).y} x2={P(u1, inset).x} y2={P(u1, inset).y} strokeDasharray="6 3" />
+        </g>
+      ) : (
+        <g stroke={color} strokeWidth={1.5} fill="none">
+          {/* leaf + swing arc; double doors get two half leaves */}
+          {(() => {
+            const leaves = o.type === "doubleDoor" ? 2 : 1;
+            const leafW = o.widthFt / leaves;
+            const side = swingOut ? 1 : -1; // outward normal is +n
+            const out: React.ReactNode[] = [];
+            for (let i = 0; i < leaves; i++) {
+              const hinge = i === 0 ? u0 : u1;
+              const dirU = i === 0 ? 1 : -1;
+              const tip = P(hinge, side * leafW);
+              const h = P(hinge, 0);
+              const end = P(hinge + dirU * leafW, 0);
+              const sweep = (side > 0 ? 1 : 0) ^ (dirU > 0 ? 0 : 1);
+              out.push(
+                <g key={i}>
+                  <line x1={h.x} y1={h.y} x2={tip.x} y2={tip.y} />
+                  <path d={`M ${tip.x} ${tip.y} A ${leafW * scale} ${leafW * scale} 0 0 ${sweep} ${end.x} ${end.y}`} strokeWidth={0.8} strokeDasharray="3 2" />
+                </g>,
+              );
+            }
+            return out;
+          })()}
+        </g>
+      )}
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill={color} />
+        </marker>
+      </defs>
+      <title>{`${o.type} ${formatFtIn(o.widthFt)} × ${formatFtIn(o.heightFt)} @ ${formatFtIn(o.offsetFt)}`}</title>
+    </g>
+  );
+}
+
+/** Rectangle of plan-space half-width `halfFt` around the wall segment [u0,u1], as SVG points. */
+function hitBand(w: Wall, f: ReturnType<typeof wallFrame>, u0: number, u1: number, widthFt: number, px: (x: number) => number, py: (y: number) => number): string {
+  const h = widthFt / 2;
+  const P = (u: number, n: number) => `${px(w.start.x + f.dir.x * u + f.normal.x * n)},${py(w.start.y + f.dir.y * u + f.normal.y * n)}`;
+  return [P(u0, -h), P(u1, -h), P(u1, h), P(u0, h)].join(" ");
 }
 
 function Dimension({ x1, y1, x2, y2, label, vertical = false }: { x1: number; y1: number; x2: number; y2: number; label: string; vertical?: boolean }) {
@@ -173,7 +462,7 @@ function Dimension({ x1, y1, x2, y2, label, vertical = false }: { x1: number; y1
   const my = (y1 + y2) / 2;
   const tick = 5;
   return (
-    <g stroke="#6b6963" strokeWidth={1} fill="none">
+    <g stroke="#6b6963" strokeWidth={1} fill="none" pointerEvents="none">
       <line x1={x1} y1={y1} x2={x2} y2={y2} />
       {vertical ? (
         <>
@@ -186,19 +475,10 @@ function Dimension({ x1, y1, x2, y2, label, vertical = false }: { x1: number; y1
           <line x1={x2} y1={y2 - tick} x2={x2} y2={y2 + tick} />
         </>
       )}
-      <text
-        x={mx}
-        y={my}
-        fill="#1c1b19"
-        stroke="none"
-        fontSize={11}
-        fontFamily="ui-monospace, monospace"
-        textAnchor="middle"
-        dominantBaseline="middle"
-        transform={vertical ? `rotate(-90 ${mx} ${my})` : undefined}
-        style={{ paintOrder: "stroke" }}
-      >
-        <tspan stroke="#ffffff" strokeWidth={4}>{label}</tspan>
+      <text x={mx} y={my} fill="#1c1b19" stroke="none" fontSize={11} fontFamily="ui-monospace, monospace" textAnchor="middle" dominantBaseline="middle" transform={vertical ? `rotate(-90 ${mx} ${my})` : undefined} style={{ paintOrder: "stroke" }}>
+        <tspan stroke="#ffffff" strokeWidth={4}>
+          {label}
+        </tspan>
       </text>
     </g>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDefaultModel, parseBuildingModel, setEaveHeight, setFootprintRect, setMethod, setName, setRoof, snapToModule, EXTERIOR_WALL_IDS, wallLengthFt } from "@/lib/model";
+import { createDefaultModel, parseBuildingModel, setEaveHeight, setFootprintRect, setFrameSystem, setName, setRoof, snapToModule, EXTERIOR_WALL_IDS, wallLengthFt } from "@/lib/model";
 
 const base = () => createDefaultModel({ now: new Date("2026-01-01T00:00:00Z") });
 
@@ -44,13 +44,13 @@ describe("commands", () => {
     expect(setEaveHeight(base(), 1).eaveHeightFt).toBe(6);
   });
 
-  it("setMethod switches foundation and truss spacing defaults", () => {
-    const m = setMethod(base(), "stickFrame");
+  it("setFrameSystem switches foundation and truss spacing defaults", () => {
+    const m = setFrameSystem(base(), "stickFrame");
     expect(m.foundation.kind).toBe("monolithicSlab");
-    expect(m.roof.trussSpacingIn).toBe(24);
-    const back = setMethod(m, "postFrame");
+    expect(m.frame.trusses.spacingIn).toBe(24);
+    const back = setFrameSystem(m, "postFrame");
     expect(back.foundation.kind).toBe("embeddedPost");
-    expect(back.roof.trussSpacingIn).toBe(48);
+    expect(back.frame.trusses.spacingIn).toBe(48);
   });
 
   it("setRoof patches and setName trims", () => {

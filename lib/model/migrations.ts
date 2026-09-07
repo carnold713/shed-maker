@@ -7,7 +7,27 @@ import { BuildingModel, SCHEMA_VERSION, parseBuildingModel } from "./schema";
 type Step = (doc: Record<string, unknown>) => Record<string, unknown>;
 
 const steps: Record<number, Step> = {
-  // 1 -> 2 would go here.
+  /**
+   * v1 -> v2 (SPEC Part II §31): `method` becomes `frame.system` with the
+   * full post-frame parameter block; `roof.trussSpacingIn` moves to
+   * `frame.trusses.spacingIn`.
+   */
+  1: (doc) => {
+    const method = doc.method === "stickFrame" ? "stickFrame" : "postFrame";
+    const roof = (doc.roof ?? {}) as Record<string, unknown>;
+    const { trussSpacingIn, ...roofRest } = roof;
+    const spacingIn = typeof trussSpacingIn === "number" ? trussSpacingIn : method === "postFrame" ? 48 : 24;
+    const rest = { ...doc };
+    delete rest.method;
+    return {
+      ...rest,
+      roof: roofRest,
+      frame: {
+        system: method,
+        trusses: { spacingIn },
+      },
+    };
+  },
 };
 
 export function migrateModel(input: unknown): BuildingModel {

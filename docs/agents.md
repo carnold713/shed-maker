@@ -6,7 +6,7 @@ Persona files live in `/agents`. Each defines scope, owned paths, standards, del
 |---|---|---|---|
 | Lead / PM | `agents/lead.md` | active | `/docs`, `README.md`, `CLAUDE.md` |
 | Architect | `agents/architect.md` | active | `/rules/design`, templates |
-| Builder / Framer | `agents/builder.md` | active (M2) | `/rules/framing`, `/rules/materials`, `/lib/bom` |
+| Builder / Framer | `agents/builder.md` | active | `/rules/framing`, `/rules/materials`, `/lib/framing`, `/lib/bom` |
 | Structural reviewer | `agents/structural.md` | active (P1, first rule shipped in M0) | `/rules/structural` |
 | UI/UX Designer | `agents/ux.md` | active | `/app`, `/components/{ui,editor,inspector,plan}` |
 | 3D Engineer | `agents/3d.md` | active | `/lib/geometry`, `/components/scene` |
@@ -20,4 +20,4 @@ Persona files live in `/agents`. Each defines scope, owned paths, standards, del
 _None beyond the SPEC §2.1 roster yet._
 
 ## Lane rules
-Nobody edits outside their owned paths without a hand-off note in `docs/handoffs/`. Shared files (`lib/model/schema.ts`, `lib/store/useProjectStore.ts`) are owned by Backend (schema) and UX (store) respectively; changes there need a note to every agent whose derived code consumes the changed field.
+Nobody edits outside their owned paths without a hand-off note in `docs/handoffs/`. Shared files (`lib/model/schema.ts`, `lib/store/useProjectStore.ts`) are owned by Backend (schema) and UX (store) respectively; `lib/framing` is the Builder's, and `lib/geometry` (3D) consumes its output without re-deriving framing; changes there need a note to every agent whose derived code consumes the changed field.

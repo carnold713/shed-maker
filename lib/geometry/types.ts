@@ -5,11 +5,25 @@
  *
  * World space: x east, y up, z SOUTH (so plan +y == world -z). Feet.
  */
+import type { Layer } from "@/lib/framing/types";
+
 export type Vec3 = [number, number, number];
+export type { Layer };
+
+export type BoxKind =
+  | "slab"
+  | "wallSkin"
+  | "roofPlane"
+  | "doorLeaf"
+  | "doorFrame"
+  | "glazing"
+  | "windowFrame"
+  | "framing";
 
 export interface BoxMember {
   id: string;
-  kind: "slab" | "wallPanel" | "roofPlane" | "post" | "stud" | "girt" | "purlin" | "plate";
+  kind: BoxKind;
+  layer: Layer;
   /** Centre of the box in world space. */
   center: Vec3;
   /** Full extents (x, y, z) BEFORE rotation. */
@@ -18,14 +32,18 @@ export interface BoxMember {
   rotation: Vec3;
   /** Which model entity produced it, for picking/provenance. */
   entityId: string;
-  /** Rule id that placed it (framing members only). */
+  /** For framing boxes: the framing member id (same as `id`). */
   ruleRef?: string;
+  /** Rendering hint: 'siding' | 'roofing' | 'concrete' | 'wood' | 'glass' | 'door' | 'trim'. */
+  material: "siding" | "roofing" | "concrete" | "wood" | "ptWood" | "glass" | "door" | "trim";
 }
 
 export interface PolygonMember {
   id: string;
   kind: "gableEnd" | "roofCap";
+  layer: Layer;
   entityId: string;
+  material: BoxMember["material"];
   /** Planar polygon, vertices in world space, counter-clockwise as seen from outside. */
   vertices: Vec3[];
 }
@@ -35,6 +53,5 @@ export interface Geometry {
   polygons: PolygonMember[];
   /** Axis-aligned bounds in world space for camera framing. */
   bounds: { min: Vec3; max: Vec3 };
-  /** Handy scalars for labels. */
   ridgeHeightFt: number;
 }

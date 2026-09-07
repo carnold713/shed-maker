@@ -2,8 +2,10 @@ import { SCHEMA_VERSION, type BuildingModel } from "./schema";
 import { syncExteriorWalls } from "./walls";
 
 /**
- * Defaults per SPEC Appendix B: post-frame, 24×36, eave 10', gable 4:12,
- * 12" overhang, trusses 4' OC, 4" slab on 4" gravel, frost 36" (unverified).
+ * Defaults per SPEC Appendix B / §20: post-frame on 8' bays with 6×6 posts,
+ * 24×36, eave 10', gable 4:12, 12" overhang, trusses 4' OC on 2-ply 2×12
+ * carriers, 2×6 face girts at 24", 2×4 purlins on edge at 24", 4" slab on 4"
+ * gravel, frost 36" (unverified).
  */
 export function createDefaultModel(opts: { name?: string; wFt?: number; dFt?: number; now?: Date } = {}): BuildingModel {
   const now = (opts.now ?? new Date()).toISOString();
@@ -15,7 +17,18 @@ export function createDefaultModel(opts: { name?: string; wFt?: number; dFt?: nu
       frostDepthIn: 36,
       verified: { frost: false, snow: false, wind: false },
     },
-    method: "postFrame",
+    frame: {
+      system: "postFrame",
+      bayFt: 8,
+      post: { size: "6x6", foundation: "embedded", embedIn: 48, holeDiaIn: 18, padDiaIn: 18 },
+      girts: { size: "2x6", spacingIn: 24, mount: "face" },
+      skirt: { size: "2x8", rows: 1 },
+      carrier: { plies: 2, size: "2x12" },
+      trusses: { spacingIn: 48, heelIn: 6, type: "common" },
+      purlins: { size: "2x4", spacingIn: 24, orientation: "edge" },
+      studs: { size: "2x6", spacingIn: 16 },
+      species: "SPF",
+    },
     footprint: { kind: "rect", wFt: opts.wFt ?? 24, dFt: opts.dFt ?? 36 },
     eaveHeightFt: 10,
     walls: [],
@@ -27,7 +40,6 @@ export function createDefaultModel(opts: { name?: string; wFt?: number; dFt?: nu
       overhangEaveIn: 12,
       overhangGableIn: 12,
       structure: "truss",
-      trussSpacingIn: 48,
       covering: "steelPanel",
       vents: { ridge: true, gable: false, soffit: false, cupola: false },
     },

@@ -12,12 +12,14 @@ describe("BuildingModel schema", () => {
 
   it("applies Appendix B defaults", () => {
     const m = createDefaultModel();
-    expect(m.method).toBe("postFrame");
+    expect(m.frame.system).toBe("postFrame");
+    expect(m.frame.bayFt).toBe(8);
+    expect(m.frame.post.size).toBe("6x6");
     expect(m.footprint).toEqual({ kind: "rect", wFt: 24, dFt: 36 });
     expect(m.eaveHeightFt).toBe(10);
     expect(m.roof.pitch).toBe(4);
     expect(m.roof.overhangEaveIn).toBe(12);
-    expect(m.roof.trussSpacingIn).toBe(48);
+    expect(m.frame.trusses.spacingIn).toBe(48);
     expect(m.foundation.slab.thicknessIn).toBe(4);
     expect(m.foundation.slab.gravelBaseIn).toBe(4);
     expect(m.foundation.postBaySpacingFt).toBe(8);
@@ -48,6 +50,21 @@ describe("BuildingModel schema", () => {
     expect(safeParseBuildingModel({}).success).toBe(false);
     expect(safeParseBuildingModel({ ...createDefaultModel(), footprint: { kind: "rect", wFt: -1, dFt: 10 } }).success).toBe(false);
     expect(safeParseBuildingModel({ ...createDefaultModel(), schemaVersion: 99 }).success).toBe(false);
+  });
+
+  it("migrates a v1 document to v2 (method -> frame, truss spacing moves)", () => {
+    const v1 = JSON.parse(JSON.stringify(createDefaultModel())) as Record<string, unknown>;
+    delete v1.frame;
+    v1.schemaVersion = 1;
+    v1.method = "stickFrame";
+    (v1.roof as Record<string, unknown>).trussSpacingIn = 24;
+    const m = migrateModel(v1);
+    expect(m.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(m.frame.system).toBe("stickFrame");
+    expect(m.frame.trusses.spacingIn).toBe(24);
+    expect(m.frame.post.size).toBe("6x6");
+    expect("method" in m).toBe(false);
+    expect("trussSpacingIn" in m.roof).toBe(false);
   });
 
   it("migrateModel accepts the current version and rejects newer ones", () => {

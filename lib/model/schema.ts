@@ -10,7 +10,7 @@
  */
 import { z } from "zod";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const Id = z.string().min(1);
 export type Id = z.infer<typeof Id>;
@@ -21,8 +21,67 @@ export type Pt = z.infer<typeof Pt>;
 export const Units = z.enum(["imperial", "metric"]);
 export type Units = z.infer<typeof Units>;
 
+/** @deprecated v1 field; v2 uses `frame.system`. Kept for migration typing only. */
 export const ConstructionMethod = z.enum(["postFrame", "stickFrame"]);
 export type ConstructionMethod = z.infer<typeof ConstructionMethod>;
+
+export const FrameSystem = z.enum(["postFrame", "stickFrame", "hybrid"]);
+export type FrameSystem = z.infer<typeof FrameSystem>;
+
+export const PostSize = z.enum(["4x6", "6x6", "6x8", "3ply2x6", "3ply2x8"]);
+export const GirtSize = z.enum(["2x4", "2x6"]);
+export const SkirtSize = z.enum(["2x6", "2x8"]);
+export const CarrierSize = z.enum(["2x8", "2x10", "2x12"]);
+export const PurlinSize = z.enum(["2x4", "2x6"]);
+export const StudSize = z.enum(["2x4", "2x6"]);
+
+/**
+ * Framing system parameters (SPEC §31). Post-frame is the primary engine;
+ * stick-frame is the secondary shell option and the interior partition system.
+ */
+export const Frame = z.object({
+  system: FrameSystem.default("postFrame"),
+  /** Post bay spacing along the truss-bearing (side) walls, feet. */
+  bayFt: z.number().positive().default(8),
+  post: z
+    .object({
+      size: PostSize.default("6x6"),
+      foundation: z.enum(["embedded", "bracketPier", "permaColumn"]).default("embedded"),
+      /** Embedment depth below grade, inches (embedded only). */
+      embedIn: z.number().positive().default(48),
+      holeDiaIn: z.number().positive().default(18),
+      padDiaIn: z.number().positive().default(18),
+    })
+    .prefault({}),
+  girts: z
+    .object({
+      size: GirtSize.default("2x6"),
+      spacingIn: z.number().positive().max(24).default(24),
+      mount: z.enum(["face", "bookshelf"]).default("face"),
+    })
+    .prefault({}),
+  skirt: z.object({ size: SkirtSize.default("2x8"), rows: z.union([z.literal(1), z.literal(2)]).default(1) }).prefault({}),
+  carrier: z.object({ plies: z.number().int().min(1).max(3).default(2), size: CarrierSize.default("2x12") }).prefault({}),
+  trusses: z
+    .object({
+      spacingIn: z.number().positive().default(48),
+      /** Heel height at the outside of bearing, inches. */
+      heelIn: z.number().nonnegative().default(6),
+      type: z.enum(["common", "scissor", "gambrel", "mono", "attic"]).default("common"),
+    })
+    .prefault({}),
+  purlins: z
+    .object({
+      size: PurlinSize.default("2x4"),
+      spacingIn: z.number().positive().default(24),
+      orientation: z.enum(["edge", "flat", "inset"]).default("edge"),
+    })
+    .prefault({}),
+  /** Stick-frame shell parameters (used when system is stickFrame). */
+  studs: z.object({ size: StudSize.default("2x6"), spacingIn: z.union([z.literal(16), z.literal(24)]).default(16) }).prefault({}),
+  species: z.enum(["SPF", "SYP", "DF"]).default("SPF"),
+});
+export type Frame = z.infer<typeof Frame>;
 
 export const Site = z.object({
   zip: z.string().optional(),
@@ -111,6 +170,8 @@ export const Opening = z.object({
   sillFt: z.number().nonnegative().default(0),
   swing: z.enum(["in", "out", "slideLeft", "slideRight", "biParting", "none"]).default("none"),
   hardware: z.array(z.string()).default([]),
+  /** Display tag on plans (D1, W3). Assigned by the drawing layer if absent. */
+  tag: z.string().optional(),
 });
 export type Opening = z.infer<typeof Opening>;
 
@@ -126,7 +187,6 @@ export const Roof = z.object({
   overhangEaveIn: z.number().min(0).max(36).default(12),
   overhangGableIn: z.number().min(0).max(36).default(12),
   structure: z.enum(["truss", "rafter"]).default("truss"),
-  trussSpacingIn: z.number().positive().default(48),
   covering: z.enum(["steelPanel", "shingle", "standingSeam"]).default("steelPanel"),
   vents: z
     .object({
@@ -258,7 +318,7 @@ export const BuildingModel = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   units: Units.default("imperial"),
   site: Site.default({ orientationDeg: 0, verified: { frost: false, snow: false, wind: false } }),
-  method: ConstructionMethod.default("postFrame"),
+  frame: Frame.prefault({}),
   footprint: Footprint,
   /** Eave (wall) height for exterior walls, feet. Per-wall override lives on Wall.heightFt. */
   eaveHeightFt: z.number().positive().default(10),

@@ -1,179 +1,247 @@
-import type { BuildingModel } from "@/lib/model/schema";
-import { wallLengthFt } from "@/lib/model/walls";
+import type { BuildingModel, Opening } from "@/lib/model/schema";
+import { deriveFraming, freeSegments, openingSpans, roofParams, wallFrame, wallLocalToWorld, type FramingSet } from "@/lib/framing";
+import { wallRotation, type WallFrame } from "@/lib/framing/wallFrame";
+import { ROOF_PANEL_THICK_FT } from "@/lib/framing/roofMath";
+import { SLIDING_LEAF_OVERLAP_FT, SLIDING_LEAF_STANDOFF_FT } from "@/lib/model/openings";
+import { planToWorld } from "./frame";
 import type { BoxMember, Geometry, PolygonMember, Vec3 } from "./types";
 
 export * from "./types";
+export { planToWorld } from "./frame";
+export { gableRiseFt } from "@/lib/framing/roofMath";
 
-/** Plan (x east, y north) -> world (x east, y up, z south). */
-export function planToWorld(x: number, y: number, h = 0): Vec3 {
-  return [x, h, -y];
-}
-
-/** Ridge height above finished floor for a gable over `spanFt` at `pitch`:12. */
-export function gableRiseFt(spanFt: number, pitch: number): number {
-  return (spanFt / 2) * (pitch / 12);
-}
+/** Siding thickness outside the wall line (steel rib), feet. */
+export const SIDING_THICK_FT = 0.75 / 12;
 
 /**
- * Derive renderable geometry for the building envelope. M0 scope: slab,
- * exterior wall panels, gable or shed roof planes and gable-end infill.
- * Framing members arrive with the framing generators in M2.
+ * Derive renderable geometry for the building. Accepts a pre-computed
+ * framing set so the caller can memoise both from the same model.
  */
-export function deriveGeometry(model: BuildingModel): Geometry {
+export function deriveGeometry(model: BuildingModel, framing: FramingSet = deriveFraming(model)): Geometry {
   if (model.footprint.kind !== "rect") {
     throw new Error("Polygon footprints are not supported yet (P1)");
   }
   const { wFt: W, dFt: D } = model.footprint;
-  const H = model.eaveHeightFt;
   const boxes: BoxMember[] = [];
   const polygons: PolygonMember[] = [];
 
-  // Slab: top at y=0, thickness below grade line for a visible edge.
+  // ---- Slab
   if (model.foundation.slab.enabled) {
     const t = model.foundation.slab.thicknessIn / 12;
+    boxes.push({ id: "slab", kind: "slab", layer: "slab", entityId: "foundation", material: "concrete", center: [W / 2, -t / 2, -D / 2], size: [W, t, D], rotation: [0, 0, 0] });
+  }
+
+  // ---- Framing members (already world-space boxes)
+  for (const m of framing.members) {
     boxes.push({
-      id: "slab",
-      kind: "slab",
-      entityId: "foundation",
-      center: [W / 2, -t / 2, -D / 2],
-      size: [W, t, D],
-      rotation: [0, 0, 0],
+      id: m.id,
+      kind: "framing",
+      layer: m.layer,
+      entityId: m.id,
+      ruleRef: m.ruleRef,
+      material: m.kind === "footing" ? "concrete" : m.treatment === "none" ? "wood" : "ptWood",
+      center: m.center,
+      size: m.size,
+      rotation: m.rotation,
     });
   }
 
-  // Exterior walls as thin panels centred on the wall line.
-  for (const w of model.walls) {
-    if (w.role !== "exterior") continue;
-    const len = wallLengthFt(w);
-    const thick = w.thicknessIn / 12;
-    const mx = (w.start.x + w.end.x) / 2;
-    const my = (w.start.y + w.end.y) / 2;
-    const angle = Math.atan2(w.end.y - w.start.y, w.end.x - w.start.x);
-    boxes.push({
-      id: `panel_${w.id}`,
-      kind: "wallPanel",
-      entityId: w.id,
-      center: planToWorld(mx, my, w.heightFt / 2),
-      size: [len, w.heightFt, thick],
-      // Plan angle is CCW about +y(north); world rotation about +Y is measured with z south, so negate.
-      rotation: [0, angle, 0],
-    });
+  // ---- Wall skins (siding) with openings cut out
+  for (const wall of model.walls) {
+    if (wall.role !== "exterior") continue;
+    const f = wallFrame(wall);
+    const spans = openingSpans(model, wall.id);
+    const H = wall.heightFt;
+    const pieces = skinPieces(f.lengthFt, H, spans);
+    for (const [i, p] of pieces.entries()) {
+      boxes.push(skinBox(f, `skin_${wall.id}_${i}`, wall.id, p.u0, p.u1, p.h0, p.h1));
+    }
+    for (const s of spans) {
+      const o = model.openings.find((x) => x.id === s.openingId)!;
+      boxes.push(...openingGeometry(f, o));
+    }
   }
 
-  // Roof.
-  const ovE = model.roof.overhangEaveIn / 12;
-  const ovG = model.roof.overhangGableIn / 12;
-  const pitch = model.roof.pitch;
-  const slopeAngle = Math.atan2(pitch, 12);
-  const roofThick = 0.5;
-  let ridgeHeightFt = H;
-
-  const ridgeNS = model.roof.ridgeAxis === "ns"; // ridge runs along plan y; slopes face E/W
-  const span = ridgeNS ? W : D; // horizontal distance across the roof
-  const length = ridgeNS ? D : W; // along the ridge
-
-  if (model.roof.form === "shed") {
-    // Mono-slope: high side on the "start" (west or south), low side opposite. Eave height = low wall.
-    const rise = span * (pitch / 12);
-    ridgeHeightFt = H + rise;
-    const run = span + 2 * ovE;
-    const slopeLen = run / Math.cos(slopeAngle);
-    const midH = H + rise / 2; // at plan centre
-    // High side is the WEST wall (ridgeAxis "ns") or the NORTH wall (ridgeAxis "ew").
-    // Rz(-θ) drops the local +x end (east); Rx(+φ) drops the local +z end (south).
+  // ---- Roof on top of the trusses / purlins
+  const rp = roofParams(model);
+  const ridgeHeightFt = rp.ridgeHeightFt;
+  const roofThick = ROOF_PANEL_THICK_FT;
+  const halfSpan = rp.spanFt / 2;
+  const along = rp.lengthFt + 2 * rp.ovG;
+  const isShed = model.roof.form === "shed";
+  // Shed high side is the west wall (ridge N–S) or the north wall (ridge E–W), ADR-0005.
+  const planes: { from: number; to: number; sign: 1 | -1; id: string }[] = isShed
+    ? [{ from: -rp.ovE, to: rp.spanFt + rp.ovE, sign: rp.ridgeNS ? -1 : 1, id: "roof_mono" }]
+    : [
+        { from: -rp.ovE, to: halfSpan, sign: 1, id: rp.ridgeNS ? "roof_w" : "roof_s" },
+        { from: halfSpan, to: rp.spanFt + rp.ovE, sign: -1, id: rp.ridgeNS ? "roof_e" : "roof_n" },
+      ];
+  for (const pl of planes) {
+    const slopeLen = (pl.to - pl.from) / Math.cos(rp.theta);
+    const mid = (pl.from + pl.to) / 2;
+    const distFromWall = pl.sign === 1 ? mid : rp.spanFt - mid;
+    // Panel centreline sits half a panel above the purlin tops.
+    const centerH = rp.datumAtWall + distFromWall * (rp.pitch / 12) + roofThick / 2 / Math.cos(rp.theta);
+    const ang = pl.sign * rp.theta;
     boxes.push({
-      id: "roof_mono",
+      id: pl.id,
       kind: "roofPlane",
+      layer: "roofing",
       entityId: "roof",
-      center: planToWorld(W / 2, D / 2, midH),
-      size: ridgeNS ? [slopeLen, roofThick, length + 2 * ovG] : [length + 2 * ovG, roofThick, slopeLen],
-      rotation: ridgeNS ? [0, 0, -slopeAngle] : [slopeAngle, 0, 0],
+      material: "roofing",
+      center: rp.ridgeNS ? planToWorld(mid, rp.lengthFt / 2, centerH) : planToWorld(rp.lengthFt / 2, mid, centerH),
+      size: rp.ridgeNS ? [slopeLen, roofThick, along] : [along, roofThick, slopeLen],
+      rotation: rp.ridgeNS ? [0, 0, ang] : [ang, 0, 0],
     });
-  } else {
-    // Gable (gambrel/hip/monitor render as gable until P1/P2 geometry lands).
-    const rise = gableRiseFt(span, pitch);
-    ridgeHeightFt = H + rise;
-    const halfRun = span / 2 + ovE;
-    const slopeLen = halfRun / Math.cos(slopeAngle);
-    // Each plane runs from the ridge (height H + rise) down to the eave overhang tip
-    // (height H - ovE·pitch/12). Its centre sits halfway along that run.
-    const midH = H + rise / 2 - (ovE * pitch) / 24;
-    const centerOffset = halfRun / 2; // horizontal distance from ridge to plane centre
-    const along = length + 2 * ovG;
+  }
 
-    if (ridgeNS) {
-      // Two planes east and west of x = W/2.
-      boxes.push({
-        id: "roof_w",
-        kind: "roofPlane",
-        entityId: "roof",
-        center: planToWorld(W / 2 - centerOffset, D / 2, midH),
-        size: [slopeLen, roofThick, along],
-        rotation: [0, 0, slopeAngle], // +x end (ridge) up
-      });
-      boxes.push({
-        id: "roof_e",
-        kind: "roofPlane",
-        entityId: "roof",
-        center: planToWorld(W / 2 + centerOffset, D / 2, midH),
-        size: [slopeLen, roofThick, along],
-        rotation: [0, 0, -slopeAngle], // -x end (ridge) up
-      });
-      // Gable-end triangles at y=0 (south) and y=D (north).
+  // ---- Gable-end infill above the eave on the gable walls (siding).
+  if (!isShed) {
+    const peak = rp.datumAtWall + gableRise(rp.spanFt, rp.pitch);
+    const eaveTop = rp.datumAtWall;
+    const H = model.eaveHeightFt;
+    if (rp.ridgeNS) {
       polygons.push(
-        {
-          id: "gable_s",
-          kind: "gableEnd",
-          entityId: "wall_ext_s",
-          vertices: [planToWorld(0, 0, H), planToWorld(W, 0, H), planToWorld(W / 2, 0, ridgeHeightFt)],
-        },
-        {
-          id: "gable_n",
-          kind: "gableEnd",
-          entityId: "wall_ext_n",
-          vertices: [planToWorld(W, D, H), planToWorld(0, D, H), planToWorld(W / 2, D, ridgeHeightFt)],
-        },
+        gablePoly("gable_s", "wall_ext_s", [planToWorld(0, 0, H), planToWorld(W, 0, H), planToWorld(W, 0, eaveTop), planToWorld(W / 2, 0, peak), planToWorld(0, 0, eaveTop)]),
+        gablePoly("gable_n", "wall_ext_n", [planToWorld(W, D, H), planToWorld(0, D, H), planToWorld(0, D, eaveTop), planToWorld(W / 2, D, peak), planToWorld(W, D, eaveTop)]),
       );
     } else {
-      // Ridge along x; planes north and south of y = D/2.
-      boxes.push({
-        id: "roof_s",
-        kind: "roofPlane",
-        entityId: "roof",
-        center: planToWorld(W / 2, D / 2 - centerOffset, midH),
-        size: [along, roofThick, slopeLen],
-        rotation: [slopeAngle, 0, 0], // +z end (south eave) down
-      });
-      boxes.push({
-        id: "roof_n",
-        kind: "roofPlane",
-        entityId: "roof",
-        center: planToWorld(W / 2, D / 2 + centerOffset, midH),
-        size: [along, roofThick, slopeLen],
-        rotation: [-slopeAngle, 0, 0], // -z end (north eave) down
-      });
       polygons.push(
-        {
-          id: "gable_w",
-          kind: "gableEnd",
-          entityId: "wall_ext_w",
-          vertices: [planToWorld(0, D, H), planToWorld(0, 0, H), planToWorld(0, D / 2, ridgeHeightFt)],
-        },
-        {
-          id: "gable_e",
-          kind: "gableEnd",
-          entityId: "wall_ext_e",
-          vertices: [planToWorld(W, 0, H), planToWorld(W, D, H), planToWorld(W, D / 2, ridgeHeightFt)],
-        },
+        gablePoly("gable_w", "wall_ext_w", [planToWorld(0, D, H), planToWorld(0, 0, H), planToWorld(0, 0, eaveTop), planToWorld(0, D / 2, peak), planToWorld(0, D, eaveTop)]),
+        gablePoly("gable_e", "wall_ext_e", [planToWorld(W, 0, H), planToWorld(W, D, H), planToWorld(W, D, eaveTop), planToWorld(W, D / 2, peak), planToWorld(W, 0, eaveTop)]),
+      );
+    }
+  } else {
+    // Shed roof: triangular infill on the two walls parallel to the slope.
+    const highSide = rp.datumAtWall + rp.spanFt * (rp.pitch / 12);
+    const H = model.eaveHeightFt;
+    if (rp.ridgeNS) {
+      polygons.push(
+        gablePoly("gable_s", "wall_ext_s", [planToWorld(0, 0, H), planToWorld(W, 0, H), planToWorld(W, 0, rp.datumAtWall), planToWorld(0, 0, highSide)]),
+        gablePoly("gable_n", "wall_ext_n", [planToWorld(W, D, H), planToWorld(0, D, H), planToWorld(0, D, highSide), planToWorld(W, D, rp.datumAtWall)]),
+      );
+    } else {
+      polygons.push(
+        gablePoly("gable_w", "wall_ext_w", [planToWorld(0, D, H), planToWorld(0, 0, H), planToWorld(0, 0, rp.datumAtWall), planToWorld(0, D, highSide)]),
+        gablePoly("gable_e", "wall_ext_e", [planToWorld(W, 0, H), planToWorld(W, D, H), planToWorld(W, D, highSide), planToWorld(W, 0, rp.datumAtWall)]),
       );
     }
   }
 
-  const pad = Math.max(ovE, ovG) + 1;
+  const pad = Math.max(rp.ovE, rp.ovG) + 1;
+  const embed = model.frame.post.foundation === "embedded" ? model.frame.post.embedIn / 12 : 0;
   return {
     boxes,
     polygons,
-    bounds: { min: [-pad, -1, -D - pad], max: [W + pad, ridgeHeightFt + 1, pad] },
+    bounds: { min: [-pad, -embed - 1, -D - pad], max: [W + pad, ridgeHeightFt + 1, pad] },
     ridgeHeightFt,
   };
+}
+
+function gableRise(spanFt: number, pitch: number) {
+  return (spanFt / 2) * (pitch / 12);
+}
+
+function gablePoly(id: string, entityId: string, vertices: Vec3[]): PolygonMember {
+  return { id, kind: "gableEnd", layer: "siding", entityId, material: "siding", vertices };
+}
+
+/** Rectangular pieces of a wall face not covered by openings (below sills, between, above heads). */
+export function skinPieces(lengthFt: number, H: number, spans: ReturnType<typeof openingSpans>): { u0: number; u1: number; h0: number; h1: number }[] {
+  // Horizontal bands split at every opening sill/head; within each band, free segments.
+  const cuts = new Set<number>([0, H]);
+  for (const s of spans) {
+    cuts.add(Math.max(0, Math.min(H, s.h0)));
+    cuts.add(Math.max(0, Math.min(H, s.h1)));
+  }
+  const levels = [...cuts].sort((a, b) => a - b);
+  const out: { u0: number; u1: number; h0: number; h1: number }[] = [];
+  for (let i = 0; i < levels.length - 1; i++) {
+    const h0 = levels[i];
+    const h1 = levels[i + 1];
+    if (h1 - h0 < 1e-6) continue;
+    for (const [u0, u1] of freeSegments(lengthFt, spans, h0, h1)) out.push({ u0, u1, h0, h1 });
+  }
+  // Merge vertically adjacent pieces with identical u-extents to keep the box count down.
+  const merged: typeof out = [];
+  for (const p of out.sort((a, b) => a.u0 - b.u0 || a.h0 - b.h0)) {
+    const last = merged[merged.length - 1];
+    if (last && Math.abs(last.u0 - p.u0) < 1e-9 && Math.abs(last.u1 - p.u1) < 1e-9 && Math.abs(last.h1 - p.h0) < 1e-9) last.h1 = p.h1;
+    else merged.push({ ...p });
+  }
+  return merged;
+}
+
+function skinBox(f: WallFrame, id: string, wallId: string, u0: number, u1: number, h0: number, h1: number): BoxMember {
+  return {
+    id,
+    kind: "wallSkin",
+    layer: "siding",
+    entityId: wallId,
+    material: "siding",
+    center: wallLocalToWorld(f, (u0 + u1) / 2, (h0 + h1) / 2, SIDING_THICK_FT / 2),
+    size: [u1 - u0, h1 - h0, SIDING_THICK_FT],
+    rotation: wallRotation(f),
+  };
+}
+
+/** Door leaves, frames, glazing for one opening, in the wall plane. */
+function openingGeometry(f: WallFrame, o: Opening): BoxMember[] {
+  const out: BoxMember[] = [];
+  const u0 = o.offsetFt;
+  const u1 = o.offsetFt + o.widthFt;
+  const h0 = o.sillFt;
+  const h1 = o.sillFt + o.heightFt;
+  const jambT = 0.75 / 12;
+  const frameD = 4.5 / 12; // jamb depth through the wall
+  const mk = (id: string, kind: BoxMember["kind"], material: BoxMember["material"], a0: number, a1: number, b0: number, b1: number, n0: number, n1: number): BoxMember => ({
+    id,
+    kind,
+    layer: "openings",
+    entityId: o.id,
+    material,
+    center: wallLocalToWorld(f, (a0 + a1) / 2, (b0 + b1) / 2, (n0 + n1) / 2),
+    size: [a1 - a0, b1 - b0, n1 - n0],
+    rotation: wallRotation(f),
+  });
+  const kindFrame = o.type === "window" ? "windowFrame" : "doorFrame";
+  // Jambs + head (frame)
+  out.push(mk(`${o.id}_jamb_l`, kindFrame, "trim", u0, u0 + jambT, h0, h1, -frameD, SIDING_THICK_FT));
+  out.push(mk(`${o.id}_jamb_r`, kindFrame, "trim", u1 - jambT, u1, h0, h1, -frameD, SIDING_THICK_FT));
+  out.push(mk(`${o.id}_head`, kindFrame, "trim", u0, u1, h1 - jambT, h1, -frameD, SIDING_THICK_FT));
+  if (o.type === "window") {
+    out.push(mk(`${o.id}_sill`, kindFrame, "trim", u0, u1, h0, h0 + jambT, -frameD, SIDING_THICK_FT));
+    out.push(mk(`${o.id}_glass`, "glazing", "glass", u0 + jambT, u1 - jambT, h0 + jambT, h1 - jambT, -frameD / 2 - 0.01, -frameD / 2 + 0.01));
+    return out;
+  }
+  const leafT = o.type === "overheadDoor" ? 2 / 12 : 1.75 / 12;
+  if (o.type === "slidingDoor" || o.type === "stallDoor") {
+    // Exterior-hung leaf, wider than the opening, standing off the wall face (SPEC §19.3).
+    const ov = SLIDING_LEAF_OVERLAP_FT;
+    const n0 = SIDING_THICK_FT + SLIDING_LEAF_STANDOFF_FT;
+    if (o.swing === "biParting") {
+      const mid = (u0 + u1) / 2;
+      out.push(mk(`${o.id}_leaf_l`, "doorLeaf", "door", u0 - ov, mid, 0.05, h1 + ov, n0, n0 + leafT));
+      out.push(mk(`${o.id}_leaf_r`, "doorLeaf", "door", mid, u1 + ov, 0.05, h1 + ov, n0, n0 + leafT));
+    } else {
+      out.push(mk(`${o.id}_leaf`, "doorLeaf", "door", u0 - ov, u1 + ov, 0.05, h1 + ov, n0, n0 + leafT));
+    }
+    // Track above the opening.
+    out.push(mk(`${o.id}_track`, "doorFrame", "trim", u0 - o.widthFt * (o.swing === "biParting" ? 0.5 : 1) - ov, u1 + (o.swing === "biParting" ? o.widthFt * 0.5 : 0) + ov, h1 + ov, h1 + ov + 0.2, SIDING_THICK_FT, n0 + leafT + 0.02));
+    return out;
+  }
+  // Hinged / overhead leaves sit in the opening plane.
+  const n0 = -frameD + 0.5 / 12;
+  if (o.type === "doubleDoor") {
+    const mid = (u0 + u1) / 2;
+    out.push(mk(`${o.id}_leaf_l`, "doorLeaf", "door", u0 + jambT, mid, h0, h1 - jambT, n0, n0 + leafT));
+    out.push(mk(`${o.id}_leaf_r`, "doorLeaf", "door", mid, u1 - jambT, h0, h1 - jambT, n0, n0 + leafT));
+  } else if (o.type === "dutchDoor") {
+    const split = h0 + (h1 - h0) * 0.5;
+    out.push(mk(`${o.id}_leaf_bottom`, "doorLeaf", "door", u0 + jambT, u1 - jambT, h0, split - 0.01, n0, n0 + leafT));
+    out.push(mk(`${o.id}_leaf_top`, "doorLeaf", "door", u0 + jambT, u1 - jambT, split + 0.01, h1 - jambT, n0, n0 + leafT));
+  } else {
+    out.push(mk(`${o.id}_leaf`, "doorLeaf", "door", u0 + jambT, u1 - jambT, h0, h1 - jambT, n0, n0 + leafT));
+  }
+  return out;
 }

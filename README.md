@@ -2,7 +2,7 @@
 
 Construction-ready barn and shed design: set a footprint and carve up the interior, or place stalls and let the tool derive the envelope. One `BuildingModel` drives the 2D plan, the 3D scene, the framing layer, the materials list, and the plan sheets.
 
-`docs/SPEC.md` is the source of truth. Milestone 0 (skeleton) is complete; see `docs/handoffs/` for the current state and next steps.
+`docs/SPEC.md` (v2, Part II wins over Part I) is the source of truth. Milestones 0 (skeleton) and 1 (envelope: openings, post-frame framing as real geometry, views, right-click model) are complete; see `docs/handoffs/` for the current state and next steps.
 
 ## Stack
 Next.js 15 (App Router) · TypeScript strict · Tailwind v4 · React Three Fiber · Zustand + zundo · Zod · Prisma + Postgres · Clerk · Railway.
@@ -24,8 +24,8 @@ npm run db:migrate   # prisma migrate deploy
 ```
 app/          routes: /, /new, /p/[id], /api/*
 components/   ui/, editor/, inspector/, plan/, scene/, auth/, site/
-lib/          model/ (schema, commands, migrations), store/, geometry/, repo/, units.ts
-rules/        design/, structural/, framing/, materials/, animals/, mep/  — pure rules with citations
+lib/          model/ (schema, commands, openings, migrations), framing/ (post-frame + stick generators), geometry/, store/, repo/, units.ts
+rules/        design/, structural/, framing/, materials/ (lumber table), animals/, mep/  — pure rules with citations
 agents/       persona files for the agent team (SPEC §2)
 docs/         SPEC.md, adr/, handoffs/, agents.md, RULES_INDEX.md
 prisma/       schema + migrations

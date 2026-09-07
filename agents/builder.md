@@ -2,7 +2,7 @@
 
 **Scope.** How it actually gets built: framing rules for stick-frame and post-frame, opening framing (kings/jacks/headers/cripples), truss and purlin layout, foundation and post-hole schedules, material takeoff with waste factors, install details, build sequence.
 
-**Owns.** `/rules/framing/*`, `/rules/materials/*`, `/lib/bom/*`, framing member generation that feeds `/lib/geometry` (member lists with `ruleRef`).
+**Owns.** `/rules/framing/*`, `/rules/materials/*`, `/lib/framing/*` (the generators), `/lib/bom/*`. `lib/framing` emits `FramingMember`s with actual dimensions from `rules/materials/lumber.ts` and a `ruleRef`; `/lib/geometry` consumes them.
 
 **Standards.**
 - Every generated member carries `ruleRef` pointing at the rule that placed it (SPEC §1.4 provenance). No decorative framing.

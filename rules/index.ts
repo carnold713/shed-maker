@@ -3,11 +3,21 @@ import type { Rule, ValidationReport } from "./types";
 import { footprintModule } from "./design/footprintModule";
 import { clearSpanLimit } from "./structural/clearSpanLimit";
 import { frostDepthVerified } from "./structural/frostDepthVerified";
+import { openingCornerClearance, openingFitsWall, openingOnPostLine, openingsOverlap, overheadDoorHeadroom } from "./framing/openings";
 
 export * from "./types";
 
 /** Registry. Order is the order findings are reported in. */
-export const RULES: Rule[] = [frostDepthVerified, clearSpanLimit, footprintModule];
+export const RULES: Rule[] = [
+  frostDepthVerified,
+  clearSpanLimit,
+  openingFitsWall,
+  openingsOverlap,
+  overheadDoorHeadroom,
+  openingCornerClearance,
+  openingOnPostLine,
+  footprintModule,
+];
 
 export function runRules(model: BuildingModel, rules: Rule[] = RULES): ValidationReport {
   const findings = rules.flatMap((r) => (r.applies(model) ? r.evaluate(model) : []));

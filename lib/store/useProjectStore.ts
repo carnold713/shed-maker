@@ -4,8 +4,9 @@ import { create } from "zustand";
 import { temporal } from "zundo";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { shallow } from "zustand/shallow";
-import type { BuildingModel, ConstructionMethod, Roof } from "@/lib/model/schema";
+import type { BuildingModel, Frame, FrameSystem, Opening, Roof } from "@/lib/model/schema";
 import * as cmd from "@/lib/model/commands";
+import { newId } from "@/lib/model/ids";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -27,11 +28,22 @@ export interface ProjectState {
 
   setFootprintRect: (wFt: number, dFt: number) => void;
   setEaveHeight: (ft: number) => void;
-  setMethod: (m: ConstructionMethod) => void;
+  setFrameSystem: (s: FrameSystem) => void;
+  setFrame: (patch: Parameters<typeof cmd.setFrame>[1]) => void;
   setRoof: (patch: Partial<Roof>) => void;
   setName: (name: string) => void;
   snapFootprintToModule: (moduleFt?: 2 | 4) => void;
+  addOpening: (input: cmd.AddOpeningInput) => string | null;
+  updateOpening: (id: string, patch: Partial<Omit<Opening, "id" | "wallId">>) => void;
+  moveOpening: (id: string, offsetFt: number) => void;
+  removeOpening: (id: string) => void;
+  flipOpeningSwing: (id: string) => void;
+  centerOpening: (id: string, on?: "wall" | "bay") => void;
+  /** Run `fn` as one undo step (drags call many commands). */
+  transaction: (fn: () => void) => void;
 }
+
+type FramePatch = Partial<{ [K in keyof Frame]: Frame[K] extends object ? Partial<Frame[K]> : Frame[K] }>;
 
 type ModelUpdater = (m: BuildingModel) => BuildingModel;
 
@@ -65,7 +77,39 @@ export const useProjectStore = create<ProjectState>()(
 
         setFootprintRect: (w, d) => apply((m) => cmd.setFootprintRect(m, w, d)),
         setEaveHeight: (ft) => apply((m) => cmd.setEaveHeight(m, ft)),
-        setMethod: (method) => apply((m) => cmd.setMethod(m, method)),
+        setFrameSystem: (system) => apply((m) => cmd.setFrameSystem(m, system)),
+        setFrame: (patch: FramePatch) => apply((m) => cmd.setFrame(m, patch)),
+        addOpening: (input) => {
+          const id = input.id ?? newId("op");
+          apply((m) => cmd.addOpening(m, { ...input, id }));
+          return get().model?.openings.some((o) => o.id === id) ? id : null;
+        },
+        updateOpening: (id, patch) => apply((m) => cmd.updateOpening(m, id, patch)),
+        moveOpening: (id, offsetFt) => apply((m) => cmd.moveOpening(m, id, offsetFt)),
+        removeOpening: (id) => {
+          apply((m) => cmd.removeOpening(m, id));
+          if (get().selection === id) set({ selection: null });
+        },
+        flipOpeningSwing: (id) => apply((m) => cmd.flipOpeningSwing(m, id)),
+        centerOpening: (id, on = "wall") => apply((m) => cmd.centerOpening(m, id, on)),
+        transaction: (fn) => {
+          const temporal = useProjectStore.temporal.getState();
+          const start = get().model;
+          temporal.pause();
+          try {
+            fn();
+          } finally {
+            const end = get().model;
+            if (start && end && end !== start) {
+              // Rewind untracked, then replay tracked so history holds exactly one step.
+              set({ model: start });
+              temporal.resume();
+              set({ model: end });
+            } else {
+              temporal.resume();
+            }
+          }
+        },
         setRoof: (patch) => apply((m) => cmd.setRoof(m, patch)),
         setName: (name) => apply((m) => cmd.setName(m, name)),
         snapFootprintToModule: (moduleFt = 2) =>

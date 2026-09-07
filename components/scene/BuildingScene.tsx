@@ -1,55 +1,126 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import * as THREE from "three";
-import type { Geometry, PolygonMember } from "@/lib/geometry";
+import type { ThreeEvent } from "@react-three/fiber";
+import type { BoxMember, Geometry, PolygonMember } from "@/lib/geometry";
 import type { MaterialChoices } from "@/lib/model/schema";
 import { useProjectStore } from "@/lib/store/useProjectStore";
+import { useViewStore, type ContextTarget } from "@/lib/store/useViewStore";
+import { InstancedBoxes } from "./InstancedBoxes";
 
 const SELECT = "#b5532a";
 
-export function BuildingScene({ geometry, materials }: { geometry: Geometry; materials: MaterialChoices }) {
+type Group = { key: string; boxes: BoxMember[]; color: string; roughness: number; metalness: number; transparent?: boolean; opacity?: number };
+
+/** Selection id for a box: openings select the opening, skins select the footprint, framing selects the member. */
+function selectionIdFor(b: BoxMember): string {
+  if (b.kind === "wallSkin") return "footprint";
+  if (b.kind === "framing") return b.id;
+  if (b.kind === "roofPlane" || b.kind === "slab") return b.entityId;
+  return b.entityId; // opening parts -> opening id
+}
+
+function targetFor(b: BoxMember): ContextTarget["kind"] {
+  if (b.kind === "wallSkin") return "wall";
+  if (b.kind === "framing") return "member";
+  if (b.kind === "roofPlane") return "roof";
+  if (b.kind === "slab") return "footprint";
+  return "opening";
+}
+
+export function BuildingScene({ geometry, materials, clippingPlanes }: { geometry: Geometry; materials: MaterialChoices; clippingPlanes: THREE.Plane[] }) {
   const selection = useProjectStore((s) => s.selection);
   const select = useProjectStore((s) => s.select);
+  const visible = useViewStore((s) => s.visibleLayers);
+  const renderMode = useViewStore((s) => s.renderMode);
+  const hovered = useViewStore((s) => s.hovered);
+  const setHovered = useViewStore((s) => s.setHovered);
+  const openContextMenu = useViewStore((s) => s.openContextMenu);
+
+  const groups = useMemo<Group[]>(() => {
+    const white = renderMode === "white";
+    const palette: Record<BoxMember["material"], Omit<Group, "key" | "boxes">> = {
+      siding: { color: white ? "#e8e8e6" : materials.sidingColor, roughness: 0.6, metalness: 0.05 },
+      roofing: { color: white ? "#d9d9d6" : materials.roofColor, roughness: 0.5, metalness: 0.08 },
+      concrete: { color: white ? "#cfcfcc" : "#b9b6ae", roughness: 0.95, metalness: 0 },
+      wood: { color: white ? "#dedcd6" : "#c9a36b", roughness: 0.85, metalness: 0 },
+      ptWood: { color: white ? "#d3d1cb" : "#9d8a5c", roughness: 0.85, metalness: 0 },
+      glass: { color: "#9fc4d8", roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.45 },
+      door: { color: white ? "#e2e2df" : materials.trimColor, roughness: 0.6, metalness: 0.1 },
+      trim: { color: white ? "#efefec" : materials.trimColor, roughness: 0.6, metalness: 0.05 },
+    };
+    const by = new Map<string, Group>();
+    for (const b of geometry.boxes) {
+      if (!visible.has(b.layer)) continue;
+      const key = `${b.material}`;
+      let g = by.get(key);
+      if (!g) {
+        g = { key, boxes: [], ...palette[b.material] };
+        by.set(key, g);
+      }
+      g.boxes.push(b);
+    }
+    return [...by.values()];
+  }, [geometry, materials, visible, renderMode]);
+
+  const onClick = useCallback((b: BoxMember) => select(selectionIdFor(b)), [select]);
+  const onContextMenu = useCallback(
+    (b: BoxMember, e: ThreeEvent<MouseEvent>) => {
+      e.nativeEvent.preventDefault();
+      const kind = targetFor(b);
+      const id = kind === "wall" ? b.entityId : kind === "member" ? b.id : kind === "roof" ? "roof" : kind === "footprint" ? "footprint" : b.entityId;
+      if (kind === "opening" || kind === "member" || kind === "wall") select(kind === "wall" ? "footprint" : id);
+      openContextMenu({ kind, id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY, from: "3d" });
+    },
+    [openContextMenu, select],
+  );
+  const onHover = useCallback((b: BoxMember | null) => setHovered(b ? selectionIdFor(b) : null), [setHovered]);
 
   return (
     <group>
-      {geometry.boxes.map((b) => {
-        const selected = selection === b.entityId || (selection === "footprint" && b.kind === "wallPanel");
-        const color =
-          b.kind === "slab" ? "#b9b6ae" : b.kind === "roofPlane" ? materials.roofColor : b.kind === "wallPanel" ? materials.sidingColor : "#c9a36b";
-        return (
-          <mesh
-            key={b.id}
-            position={b.center}
-            rotation={b.rotation}
-            castShadow
-            receiveShadow
-            onClick={(e) => {
-              e.stopPropagation();
-              select(b.kind === "wallPanel" ? "footprint" : b.entityId);
-            }}
-          >
-            <boxGeometry args={b.size} />
-            <meshStandardMaterial color={selected ? SELECT : color} roughness={b.kind === "roofPlane" ? 0.5 : 0.8} metalness={b.kind === "roofPlane" ? 0.3 : 0.05} />
-          </mesh>
-        );
-      })}
-      {geometry.polygons.map((p) => (
-        <Polygon key={p.id} member={p} color={selection === "footprint" ? SELECT : materials.sidingColor} onClick={() => select("footprint")} />
+      {groups.map((g) => (
+        <InstancedBoxes
+          key={g.key}
+          boxes={g.boxes}
+          color={g.color}
+          roughness={g.roughness}
+          metalness={g.metalness}
+          transparent={g.transparent}
+          opacity={g.opacity}
+          selection={selection}
+          hovered={hovered}
+          clippingPlanes={clippingPlanes}
+          onClick={onClick}
+          onContextMenu={onContextMenu}
+          onHover={onHover}
+        />
       ))}
+      {geometry.polygons
+        .filter((p) => visible.has(p.layer))
+        .map((p) => (
+          <Polygon
+            key={p.id}
+            member={p}
+            color={selection === "footprint" ? SELECT : renderMode === "white" ? "#e8e8e6" : materials.sidingColor}
+            clippingPlanes={clippingPlanes}
+            onClick={() => select("footprint")}
+            onContextMenu={(e) => {
+              e.nativeEvent.preventDefault();
+              openContextMenu({ kind: "wall", id: p.entityId, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY, from: "3d" });
+            }}
+          />
+        ))}
     </group>
   );
 }
 
-function Polygon({ member, color, onClick }: { member: PolygonMember; color: string; onClick: () => void }) {
+function Polygon({ member, color, clippingPlanes, onClick, onContextMenu }: { member: PolygonMember; color: string; clippingPlanes: THREE.Plane[]; onClick: () => void; onContextMenu: (e: ThreeEvent<MouseEvent>) => void }) {
   const geom = useMemo(() => {
     const g = new THREE.BufferGeometry();
     const verts = member.vertices;
     const positions: number[] = [];
-    for (let i = 1; i < verts.length - 1; i++) {
-      positions.push(...verts[0], ...verts[i], ...verts[i + 1]);
-    }
+    for (let i = 1; i < verts.length - 1; i++) positions.push(...verts[0], ...verts[i], ...verts[i + 1]);
     g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
     g.computeVertexNormals();
     return g;
@@ -63,8 +134,12 @@ function Polygon({ member, color, onClick }: { member: PolygonMember; color: str
         e.stopPropagation();
         onClick();
       }}
+      onContextMenu={(e) => {
+        e.stopPropagation();
+        onContextMenu(e);
+      }}
     >
-      <meshStandardMaterial color={color} side={THREE.DoubleSide} roughness={0.8} />
+      <meshStandardMaterial color={color} side={THREE.DoubleSide} roughness={0.6} metalness={0.05} clippingPlanes={clippingPlanes} clipShadows />
     </mesh>
   );
 }

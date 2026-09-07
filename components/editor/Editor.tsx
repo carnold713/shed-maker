@@ -10,6 +10,8 @@ import { Inspector } from "@/components/inspector/Inspector";
 import { CheckPanel } from "@/components/inspector/CheckPanel";
 import { Toolbar, type ViewMode } from "./Toolbar";
 import { useAutosave } from "./useAutosave";
+import { ContextMenuHost } from "./ContextMenuHost";
+import { useViewStore } from "@/lib/store/useViewStore";
 
 // The 3D bundle stays out of the initial route (SPEC §12).
 const Viewer = dynamic(() => import("@/components/scene/Viewer").then((m) => m.Viewer), {
@@ -55,6 +57,7 @@ export function Editor({ projectId, initialModel }: { projectId: string; initial
           <CheckPanel />
         </aside>
       </div>
+      <ContextMenuHost />
     </div>
   );
 }
@@ -64,6 +67,41 @@ function useKeyboardShortcuts() {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      const ps = useProjectStore.getState();
+      const vs = useViewStore.getState();
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        const sel = ps.selection;
+        const opening = sel ? ps.model?.openings.find((o) => o.id === sel) : undefined;
+        if ((e.key === "Delete" || e.key === "Backspace") && opening) {
+          e.preventDefault();
+          ps.removeOpening(opening.id);
+          return;
+        }
+        if (opening && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+          e.preventDefault();
+          const step = (e.shiftKey ? 1 : 1 / 12) * (e.key === "ArrowLeft" ? -1 : 1);
+          ps.moveOpening(opening.id, opening.offsetFt + step);
+          return;
+        }
+        if (e.key === "Escape") {
+          ps.select(null);
+          vs.closeContextMenu();
+          return;
+        }
+        if (e.key.toLowerCase() === "x") {
+          vs.setCutHeight(vs.cutHeightFt === null ? 4 : null);
+          return;
+        }
+        if (e.key.toLowerCase() === "f") {
+          vs.requestFit();
+          return;
+        }
+        if (e.key === "`") {
+          vs.setPreset(vs.preset === "framing" ? "exterior" : "framing");
+          return;
+        }
+        return;
+      }
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       const t = useProjectStore.temporal.getState();
