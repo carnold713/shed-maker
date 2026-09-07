@@ -12,6 +12,8 @@ test("default renderer: no page errors across presets, cutaway and isometric", a
   await page.waitForTimeout(1500);
   const renderer = await page.evaluate(() => (window as unknown as { __barnRenderer?: string }).__barnRenderer);
   expect(["webgpu", "webgl"]).toContain(renderer);
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: "test-results/renderer-exterior.png" });
   const width = page.getByTestId("input-width");
   await width.fill("30");
   await width.press("Enter");

@@ -11,6 +11,8 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
  * fill, and ACES tone mapping. Aims for the "clean render" look rather than
  * a flat lit box.
  */
+export const GROUND_SIZE_FT = 160;
+
 export function Lighting({ center, radius }: { center: [number, number, number]; radius: number }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
@@ -57,25 +59,27 @@ export function Lighting({ center, radius }: { center: [number, number, number];
   }, [gl, scene, invalidate]);
 
   const [cx, , cz] = center;
-  const shadowExtent = Math.max(60, radius * 1.4);
+  // The shadow frustum must cover everything that receives shadows (the whole ground plate),
+  // otherwise the map's edge texels smear across the uncovered area.
+  const shadowExtent = GROUND_SIZE_FT / 2 + 12;
   return (
     <>
       <hemisphereLight args={["#fff4e6", "#b9c4cf", 0.55]} />
       <directionalLight
-        position={[cx + radius * 0.6, radius * 1.1, cz + radius * 0.9]}
+        position={[cx + 60, 110, cz + 90]}
         intensity={2.4}
         color="#fff1dc"
         castShadow
         shadow-mapSize={[2048, 2048]}
-        shadow-bias={-0.00015}
-        shadow-normalBias={0.02}
-        shadow-radius={6}
+        shadow-bias={-0.0002}
+        shadow-normalBias={0.03}
+        shadow-radius={4}
         shadow-camera-left={-shadowExtent}
         shadow-camera-right={shadowExtent}
         shadow-camera-top={shadowExtent}
         shadow-camera-bottom={-shadowExtent}
         shadow-camera-near={1}
-        shadow-camera-far={radius * 5}
+        shadow-camera-far={400}
       />
       <directionalLight position={[cx - radius, radius * 0.5, cz - radius * 0.6]} intensity={0.5} color="#cfe0ff" />
     </>

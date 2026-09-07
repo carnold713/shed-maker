@@ -10,7 +10,7 @@ import { useDerived } from "@/lib/store/useDerived";
 import { BuildingScene } from "./BuildingScene";
 import { FitCamera } from "./FitCamera";
 import { Ground } from "./Ground";
-import { Lighting } from "./Lighting";
+import { Lighting, GROUND_SIZE_FT } from "./Lighting";
 import { createRenderer } from "./renderer";
 import { ClipGroup } from "./ClipGroup";
 import { formatFtIn } from "@/lib/units";
@@ -101,7 +101,7 @@ export function Viewer() {
         <FitCamera bounds={geometry.bounds} nonce={fitNonce} preset={preset} eaveFt={eave} iso={iso} />
         <ClipGroup planes={clippingPlanes}>
           <BuildingScene geometry={geometry} materials={model.materials} clippingPlanes={clippingPlanes} />
-          <Ground center={[cx, cz]} grade={grade} clippingPlanes={clippingPlanes} />
+          <Ground center={[cx, cz]} grade={grade} sizeFt={GROUND_SIZE_FT} clippingPlanes={clippingPlanes} />
         </ClipGroup>
         <OrbitControls maxPolarAngle={Math.PI / 2 - 0.02} minDistance={2} maxDistance={400} makeDefault mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />
         <ClipShadowFix />
