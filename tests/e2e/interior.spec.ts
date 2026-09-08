@@ -74,6 +74,31 @@ test("M3 layout: stamp stalls, layout generator, grow/fit, doors, edit and delet
   await page.getByRole("menuitem", { name: /Door to the outside/ }).click();
   await expect(page.getByTestId("plan-opening-dutchDoor")).toHaveCount(1);
 
+  // Aisle doors: the inspector's end-door action adds a sliding door on each outside wall the aisle reaches.
+  // Here the aisle runs 36' in a 40' barn, so only its south end is on a wall.
+  await page.getByTestId("plan-zone-aisle").first().click();
+  await expect(page.getByTestId("dock-title")).toContainText("Center aisle");
+  await expect(page.getByTestId("aisle-end-doors")).toHaveText("Door at the south end");
+  await page.getByTestId("aisle-end-doors").click();
+  await expect(page.getByTestId("plan-opening-slidingDoor")).toHaveCount(1);
+  await expect(page.getByTestId("dock-title")).toContainText("Sliding door");
+  await page.keyboard.press("Escape");
+
+  // One Door tool: with an outside door picked, clicking a stall's inside wall still adds its usual stall door,
+  // and with a stall door picked, clicking an outside wall adds a door sized for the space behind it.
+  await goStep(page, "layout");
+  await page.getByTestId("tool-interior-door").click();
+  await page.getByTestId("interior-door-picker").selectOption("ext:slide10");
+  const pen0 = (await page.getByTestId("plan-zone-pen").first().boundingBox())!;
+  await page.mouse.move(pen0.x + pen0.width / 2, pen0.y + 4);
+  await expect(page.getByTestId("status-hint")).toContainText("Click to add a sliding stall door");
+  await page.keyboard.press("Escape");
+  await page.getByTestId("plan-zone-pen").nth(2).click();
+  await page.getByTestId("zone-door-sides").getByText("⌂").first().click(); // a side marked ⌂ is an outside wall
+  await expect(page.getByTestId("dock-title")).toContainText("Dutch door");
+  await expect(page.getByTestId("plan-opening-dutchDoor")).toHaveCount(2);
+  await page.keyboard.press("Escape");
+
   // Roof-off 3D shows partitions; autosave lands; reload keeps the interior.
   await pickView(page, "view-noroof");
   await page.screenshot({ path: "test-results/interior.png" });

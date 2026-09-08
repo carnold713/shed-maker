@@ -75,6 +75,10 @@ export interface ProjectState {
   moveInteriorDoor: (id: string, offsetFt: number) => void;
   removeInteriorDoor: (id: string) => void;
   setAutoDoor: (zoneId: string, on: boolean) => void;
+  /** Door on one side of a zone: interior door on a partition, outside door on an exterior wall. Returns the new id. */
+  addZoneDoor: (input: dc.AddZoneDoorInput) => string | null;
+  /** Sliding doors at the ends of an aisle (any outside side for other zones). Returns the ids added. */
+  addEndDoors: (zoneId: string) => string[];
 
   addFixture: (input: ec.AddFixtureInput) => string | null;
   updateFixture: (id: string, patch: Parameters<typeof ec.updateFixture>[2]) => void;
@@ -204,6 +208,21 @@ export const useProjectStore = create<ProjectState>()(
           if (get().selection === id) set({ selection: null });
         },
         setAutoDoor: (zoneId, on) => apply((m) => dc.setAutoDoor(m, zoneId, on)),
+        addZoneDoor: (input) => {
+          const id = input.id ?? newId("door");
+          apply((m) => dc.addZoneDoor(m, { ...input, id }));
+          const m = get().model;
+          return m && (m.zones.some((z) => z.doors.some((d) => d.id === id)) || m.openings.some((o) => o.id === id)) ? id : null;
+        },
+        addEndDoors: (zoneId) => {
+          let added: string[] = [];
+          apply((m) => {
+            const r = dc.addEndDoors(m, zoneId);
+            added = r.added;
+            return r.model;
+          });
+          return added;
+        },
 
         addFixture: (input) => {
           const id = input.id ?? newId("fx");

@@ -19,10 +19,10 @@ export function toolHint(vs: Pick<ViewState, "tool" | "toolSpecies" | "toolRoomT
     case "aisle":
       return "Click where the aisle should run · it spans the building · Esc when done";
     case "interiorDoor":
-      return `Click a stall front or room wall to add a ${INTERIOR_DOOR_PRESETS[vs.toolInteriorDoorType as InteriorDoorType].label.toLowerCase()} · Esc to cancel`;
+      return `Click a stall or room wall to add a ${INTERIOR_DOOR_PRESETS[vs.toolInteriorDoorType as InteriorDoorType].label.toLowerCase()} · an outside wall gets a door sized for the space · Esc to cancel`;
     case "door": {
       const d = DOOR_PALETTE.find((x) => x.key === vs.toolDoorKey);
-      return `Click an outside wall to place a ${d?.label.toLowerCase() ?? "door"} · Esc to cancel`;
+      return `Click an outside wall to place a ${d?.label.toLowerCase() ?? "door"} · a stall or room wall gets its usual inside door · Esc to cancel`;
     }
     case "window": {
       const w = WINDOW_PALETTE.find((x) => x.key === vs.toolWindowKey);

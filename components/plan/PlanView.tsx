@@ -14,12 +14,12 @@ import { FixtureLayer } from "./FixtureLayer";
 import { SPECIES_PRESETS } from "@/rules/animals/presets";
 import { DOOR_PALETTE, WINDOW_PALETTE, OPENING_PRESETS, needsApron } from "@/lib/model/openings";
 import { leanToPolygon } from "@/lib/model/leanTos";
-import { INTERIOR_DOOR_PRESETS, defaultInteriorDoorSize } from "@/lib/model/interiorDoors";
+import { INTERIOR_DOOR_PRESETS, defaultInteriorDoorSize, defaultInteriorDoorType, defaultExteriorDoorSpec, type ExteriorDoorSpec } from "@/lib/model/interiorDoors";
 import { FIXTURE_PRESETS } from "@/lib/model/electrical";
 import { deriveElectrical } from "@/lib/electrical/derive";
 import { deriveDrainage } from "@/lib/plumbing/drainage";
 import { DrainLayer } from "./DrainLayer";
-import { DRAIN_PRESETS, OUTLET_ID } from "@/lib/model/drainage";
+import { DRAIN_PRESETS, OUTLET_ID, zoneAt } from "@/lib/model/drainage";
 
 /**
  * Top-down plan in SVG (SPEC §3.4, §21). Plan +y is north and renders UP the
@@ -58,8 +58,9 @@ export function PlanView() {
   const addFixture = useProjectStore((s) => s.addFixture);
   const removeFixture = useProjectStore((s) => s.removeFixture);
   const moveFixture = useProjectStore((s) => s.moveFixture);
-  const [wallGhost, setWallGhost] = useState<{ wallId: string; u: number; w: number } | null>(null);
-  const [doorGhost, setDoorGhost] = useState<{ partition: Partition; u: number; w: number; zoneId: string; side: "n" | "s" | "e" | "w"; offsetFt: number } | null>(null);
+  const [wallGhost, setWallGhost] = useState<{ wallId: string; u: number; w: number; spec?: ExteriorDoorSpec } | null>(null);
+  const [doorGhost, setDoorGhost] = useState<{ partition: Partition; u: number; w: number; zoneId: string; side: "n" | "s" | "e" | "w"; offsetFt: number; type: InteriorDoorType } | null>(null);
+  const doorToolOn = tool === "interiorDoor" || tool === "door";
   const [fixtureGhost, setFixtureGhost] = useState<{ x: number; y: number; onWall: boolean } | null>(null);
   const electrical = useMemo(() => (model ? deriveElectrical(model) : null), [model]);
   const toolDrainKind = useViewStore((s) => s.toolDrainKind);
@@ -234,11 +235,26 @@ export function PlanView() {
         return;
       }
       if (!d) {
-        if (tool === "interiorDoor") {
-          const g = doorGhostAt(model, partitions, p.x, p.y, toolInteriorDoorType);
-          setDoorGhost(g);
-          const wallHit = !g ? nearestWall(model, p.x, p.y) : null;
-          setHint(g ? `Click to add a ${INTERIOR_DOOR_PRESETS[toolInteriorDoorType].label.toLowerCase()} to ${model.zones.find((z) => z.id === g.zoneId)?.name ?? "this stall"} here` : wallHit && wallHit.dist <= 2 ? "That side is an outside wall — use “Door to the outside” on the stall, or add a door in the Outside step" : null);
+        if (tool === "interiorDoor" || tool === "door") {
+          // One Door tool: a partition within 2' gets an interior door, an outside wall within 3' gets an opening.
+          const g = doorGhostAt(model, partitions, p.x, p.y, tool === "interiorDoor" ? toolInteriorDoorType : null);
+          const hit = nearestWall(model, p.x, p.y);
+          const useInterior = !!g && (!hit || hit.dist > 3 || g.dist <= hit.dist);
+          if (useInterior && g) {
+            setDoorGhost(g);
+            setWallGhost(null);
+            setHint(`Click to add a ${INTERIOR_DOOR_PRESETS[g.type].label.toLowerCase()} to ${model.zones.find((z) => z.id === g.zoneId)?.name ?? "this stall"} here`);
+            return;
+          }
+          setDoorGhost(null);
+          if (hit && hit.dist <= 3) {
+            const ex = exteriorGhostAt(model, hit, tool === "door" ? DOOR_PALETTE.find((e) => e.key === doorKey) : undefined);
+            setWallGhost({ wallId: hit.wall.id, u: hit.u, w: ex.spec.widthFt, spec: ex.spec });
+            setHint(`Click to add a ${ex.label} on the ${SIDE_NAME[hit.wall.side ?? "s"]} wall${ex.zoneName ? ` for ${ex.zoneName}` : ""}`);
+          } else {
+            setWallGhost(null);
+            setHint("Hover a stall or room wall for an inside door, or an outside wall for a sliding, Dutch or entry door");
+          }
           return;
         }
         if (tool === "drain") {
@@ -262,9 +278,9 @@ export function PlanView() {
           } else setFixtureGhost({ x: Math.round(p.x * 2) / 2, y: Math.round(p.y * 2) / 2, onWall: false });
           return;
         }
-        if (tool === "door" || tool === "window") {
+        if (tool === "window") {
           const hit = nearestWall(model, p.x, p.y);
-          const entry = tool === "door" ? DOOR_PALETTE.find((e) => e.key === doorKey) : WINDOW_PALETTE.find((e) => e.key === windowKey);
+          const entry = WINDOW_PALETTE.find((e) => e.key === windowKey);
           setWallGhost(hit && entry && hit.dist < 3 ? { wallId: hit.wall.id, u: hit.u, w: entry.widthFt } : null);
           return;
         }
@@ -331,13 +347,21 @@ export function PlanView() {
 
   /** Place the active door/window palette entry on the wall under the cursor; one placement returns to Select (UX audit §3.7). */
   function placeOnWall(wallId: string, u: number) {
-    const entry = tool === "door" ? DOOR_PALETTE.find((e) => e.key === doorKey) : WINDOW_PALETTE.find((e) => e.key === windowKey);
+    let entry: { type: Opening["type"]; widthFt: number; heightFt: number; sillFt?: number; swing?: Opening["swing"]; variant?: string } | undefined;
+    if (tool === "window") entry = WINDOW_PALETTE.find((e) => e.key === windowKey);
+    else if (wallGhost?.spec && wallGhost.wallId === wallId) entry = wallGhost.spec;
+    else if (tool === "door") entry = DOOR_PALETTE.find((e) => e.key === doorKey);
+    else {
+      const w = model?.walls.find((x) => x.id === wallId);
+      if (model && w) entry = exteriorGhostAt(model, { wall: w, u, dist: 0 }).spec;
+    }
     if (!entry) return;
     const id = addOpening({ wallId, type: entry.type, centerFt: u, widthFt: entry.widthFt, heightFt: entry.heightFt, sillFt: entry.sillFt, swing: entry.swing, variant: entry.variant });
     if (id) {
       select(id);
       setTool("select");
       setWallGhost(null);
+      justPlaced.current = true;
     }
   }
 
@@ -369,7 +393,7 @@ export function PlanView() {
   /** Add the ghosted interior door. */
   function placeInteriorDoor() {
     if (!doorGhost) return;
-    const id = addInteriorDoor({ zoneId: doorGhost.zoneId, side: doorGhost.side, offsetFt: doorGhost.offsetFt, type: toolInteriorDoorType, widthFt: doorGhost.w });
+    const id = addInteriorDoor({ zoneId: doorGhost.zoneId, side: doorGhost.side, offsetFt: doorGhost.offsetFt, type: doorGhost.type, widthFt: doorGhost.w });
     if (id) {
       select(id);
       setTool("select");
@@ -450,8 +474,9 @@ export function PlanView() {
             else placeFixture(p.x, p.y);
             return;
           }
-          if (tool === "interiorDoor") {
+          if (tool === "interiorDoor" || tool === "door") {
             if (doorGhost) placeInteriorDoor();
+            else if (wallGhost) placeOnWall(wallGhost.wallId, wallGhost.u);
             return;
           }
           if (tool === "drain") {
@@ -529,6 +554,7 @@ export function PlanView() {
             const r = zoneRect(z);
             beginDrag({ kind: "zoneMove", id: z.id, grabX: p.x - r.x, grabY: p.y - r.y, w: r.w, d: r.d, moved: false });
           }}
+          showHandles={tool === "select"}
           onPointerDownHandle={(z, h, e) => {
             e.stopPropagation();
             (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
@@ -648,7 +674,7 @@ export function PlanView() {
         })}
 
         {/* ghost for door/window tools on the nearest wall */}
-        {wallGhost && (tool === "door" || tool === "window")
+        {wallGhost && (doorToolOn || tool === "window")
           ? (() => {
               const w = model.walls.find((x) => x.id === wallGhost.wallId);
               if (!w) return null;
@@ -684,12 +710,17 @@ export function PlanView() {
                   e.stopPropagation();
                   const p = toPlan(e, e.currentTarget.ownerSVGElement!);
                   const u = Math.max(0, Math.min(f.lengthFt, (p.x - w.start.x) * f.dir.x + (p.y - w.start.y) * f.dir.y));
-                  if (tool === "door" || tool === "window") return placeOnWall(w.id, u);
+                  if (tool === "window") return placeOnWall(w.id, u);
+                  if (doorToolOn) {
+                    // Door placement happened on pointerdown (with the ghost); this click is its tail.
+                    if (justPlaced.current) justPlaced.current = false;
+                    else placeOnWall(w.id, u);
+                    return;
+                  }
                   if (tool === "fixture") {
                     const snapped = Math.round(u * 2) / 2;
                     return placeFixture(w.start.x + f.dir.x * snapped, w.start.y + f.dir.y * snapped, w.id);
                   }
-                  if (tool === "interiorDoor") return; // outside doors live in the Outside step
                   if (tool === "drain" && toolDrainKind === "outlet") return placeDrain(w.start.x + f.dir.x * u, w.start.y + f.dir.y * u);
                   if (tool === "leanTo") {
                     const id = addLeanTo({ side: w.side! });
@@ -754,7 +785,7 @@ export function PlanView() {
         </g>
 
         {/* interior door ghost */}
-        {doorGhost && tool === "interiorDoor"
+        {doorGhost && doorToolOn
           ? (() => {
               const pp = doorGhost.partition;
               const vertical = Math.abs(pp.x1 - pp.x0) < 1e-9;
@@ -1109,7 +1140,7 @@ function OpeningSymbol({
 }
 
 /** Where an interior door would land: nearest partition within 2', snapped to 6", serving the stall/room (not the aisle). */
-function doorGhostAt(model: NonNullable<ReturnType<typeof useProjectStore.getState>["model"]>, partitions: Partition[], x: number, y: number, type: InteriorDoorType) {
+function doorGhostAt(model: NonNullable<ReturnType<typeof useProjectStore.getState>["model"]>, partitions: Partition[], x: number, y: number, wanted: InteriorDoorType | null) {
   let best: { p: Partition; u: number; dist: number; sideSign: -1 | 1 } | null = null;
   for (const p of partitions) {
     const vertical = Math.abs(p.x1 - p.x0) < 1e-9;
@@ -1128,12 +1159,32 @@ function doorGhostAt(model: NonNullable<ReturnType<typeof useProjectStore.getSta
   const vertical = Math.abs(p.x1 - p.x0) < 1e-9;
   const zoneSide: -1 | 1 = lower?.id === zone.id ? -1 : 1;
   const side = vertical ? (zoneSide === -1 ? "e" : "w") : zoneSide === -1 ? "n" : "s";
+  const type = wanted ?? defaultInteriorDoorType(zone);
   const w = Math.min(defaultInteriorDoorSize(type, zone.species).widthFt, Math.max(1.5, p.lengthFt - 0.5));
   const u = Math.round((best.u - w / 2) * 2) / 2;
   const uc = Math.max(0.25, Math.min(p.lengthFt - w - 0.25, u));
   const r = zoneRect(zone);
   const offsetFt = uc + (vertical ? p.y0 - r.y : p.x0 - r.x);
-  return { partition: p, u: uc, w, zoneId: zone.id, side: side as "n" | "s" | "e" | "w", offsetFt };
+  return { partition: p, u: uc, w, zoneId: zone.id, side: side as "n" | "s" | "e" | "w", offsetFt, type, dist: best.dist };
+}
+
+const SIDE_NAME = { n: "north", s: "south", e: "east", w: "west" } as const;
+
+/**
+ * Outside door the Door tool would place at a wall hit: the picked palette entry
+ * when one is armed, otherwise a door sized for the space just inside the wall
+ * (sliding for aisles, Dutch for stalls, entry door for rooms).
+ */
+function exteriorGhostAt(model: NonNullable<ReturnType<typeof useProjectStore.getState>["model"]>, hit: { wall: Wall; u: number; dist: number }, picked?: { type: Opening["type"]; widthFt: number; heightFt: number; sillFt?: number; swing?: Opening["swing"]; variant?: string; label: string }): { spec: ExteriorDoorSpec & { sillFt?: number }; label: string; zoneName?: string } {
+  const f = wallFrame(hit.wall);
+  const inside = { x: hit.wall.start.x + f.dir.x * hit.u - f.normal.x * 0.5, y: hit.wall.start.y + f.dir.y * hit.u - f.normal.y * 0.5 };
+  const zone = zoneAt(model, inside.x, inside.y);
+  if (picked) return { spec: { type: picked.type, widthFt: picked.widthFt, heightFt: picked.heightFt, sillFt: picked.sillFt, swing: picked.swing, variant: picked.variant }, label: picked.label.toLowerCase(), zoneName: zone?.name };
+  const r = zone ? zoneRect(zone) : null;
+  const edgeLen = r ? (f.dir.x !== 0 ? r.w : r.d) : f.lengthFt;
+  const spec = defaultExteriorDoorSpec(model, zone ?? { type: "open" }, edgeLen);
+  const label = `${OPENING_PRESETS[spec.type].label.toLowerCase()} ${formatFtIn(spec.widthFt)} × ${formatFtIn(spec.heightFt)}`;
+  return { spec, label, zoneName: zone?.name };
 }
 
 /** Nearest exterior wall to a plan point, with the distance and the position along it. */

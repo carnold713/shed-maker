@@ -32,6 +32,7 @@ export function ZoneLayer({
   onPointerDownDoor,
   onContextMenuDoor,
   onHoverDoor,
+  showHandles = true,
 }: {
   zones: Zone[];
   partitions: Partition[];
@@ -43,6 +44,8 @@ export function ZoneLayer({
   problems: Set<string>;
   onPointerDownZone: (z: Zone, e: React.PointerEvent<SVGGElement>) => void;
   onPointerDownHandle: (z: Zone, h: Handle, e: React.PointerEvent<SVGRectElement>) => void;
+  /** Hidden while a placement tool is armed so a handle never steals the click meant for a door or fixture. */
+  showHandles?: boolean;
   onContextMenu: (z: Zone, e: React.MouseEvent<SVGGElement>) => void;
   onHover: (id: string | null) => void;
   onDoubleClick: (z: Zone) => void;
@@ -137,7 +140,7 @@ export function ZoneLayer({
 
       {/* resize handles on the selected zone */}
       {zones
-        .filter((z) => z.id === selection)
+        .filter((z) => showHandles && z.id === selection)
         .map((z) => {
           const r = zoneRect(z);
           const hx = (hh: Handle) => (hh.includes("w") ? px(r.x) : hh.includes("e") ? px(r.x + r.w) : px(r.x + r.w / 2));

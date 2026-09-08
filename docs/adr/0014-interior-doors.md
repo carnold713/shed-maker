@@ -17,3 +17,8 @@ Partitions are derived from zone edges (ADR-0008) and each pen got one implicit 
 ## Consequences
 - Old models parse unchanged (`doors` defaults to `[]`, `autoDoor` to true), so every existing pen keeps its default door.
 - Doors are stored per zone, so moving a zone moves its doors; a door whose partition disappears (the neighbour was deleted) is kept in the model but not drawn, and the "no door" rule points it out.
+
+## Addendum 2026-09-08 — doors on outside-wall sides and aisle ends
+
+A zone side that lies on the building's exterior wall cannot carry an interior door (there is no partition there), so `addZoneDoor(model, { zoneId, side })` in `lib/model/interiorDoors.ts` routes such a side to `addOpening` with a door sized for the space: sliding doors sized to the aisle (8/10/12/16', 16' bi-parting; height under the eave) for aisles, open floor, equipment and hay; a Dutch door for pens; a 3' entry door for rooms (`defaultExteriorDoorSpec`, MWPS aisle guidance in `docs/research/construction-details.md`). `addEndDoors` applies it to the aisle ends that reach a wall (`endsOnOutsideWalls`); an aisle that stops short of a wall gets no door there, and the label says which end will get one. The Layout Door tool is one tool for both kinds: nearest partition within 2' → interior door of the picked (or the zone's default) type; nearest outside wall within 3' → the picked outside door or the default for the space behind the wall. Exterior openings added this way are ordinary openings (not pen-linked like `outsideAccess`), so they stay put when the zone moves.
+

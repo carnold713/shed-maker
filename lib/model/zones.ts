@@ -331,17 +331,37 @@ export function zonesOutside(model: BuildingModel): Zone[] {
 // Outside access: a pen on an exterior wall gets a Dutch door that follows it.
 // ---------------------------------------------------------------------------
 
-/** Exterior wall side a zone touches and the door centre along that wall, or null. */
-export function exteriorEdgeOf(model: BuildingModel, z: Zone): { side: "n" | "s" | "e" | "w"; centerFt: number } | null {
-  if (model.footprint.kind !== "rect") return null;
+export interface ExteriorEdge {
+  side: "n" | "s" | "e" | "w";
+  /** Centre of the zone's edge measured along the exterior wall from its start (walls run clockwise: s, e, n, w). */
+  centerFt: number;
+  /** Length of the zone's edge on that wall. */
+  lengthFt: number;
+}
+
+/** Every exterior wall side a zone's edge lies on (an aisle running wall to wall has two). */
+export function exteriorEdgesOf(model: BuildingModel, z: Zone): ExteriorEdge[] {
+  if (model.footprint.kind !== "rect") return [];
   const { wFt: W, dFt: D } = model.footprint;
   const r = zoneRect(z);
   const eps = 1e-6;
-  if (Math.abs(r.y) < eps) return { side: "s", centerFt: r.x + r.w / 2 };
-  if (Math.abs(r.x + r.w - W) < eps) return { side: "e", centerFt: r.y + r.d / 2 };
-  if (Math.abs(r.y + r.d - D) < eps) return { side: "n", centerFt: W - (r.x + r.w / 2) };
-  if (Math.abs(r.x) < eps) return { side: "w", centerFt: D - (r.y + r.d / 2) };
-  return null;
+  const out: ExteriorEdge[] = [];
+  if (Math.abs(r.y) < eps) out.push({ side: "s", centerFt: r.x + r.w / 2, lengthFt: r.w });
+  if (Math.abs(r.x + r.w - W) < eps) out.push({ side: "e", centerFt: r.y + r.d / 2, lengthFt: r.d });
+  if (Math.abs(r.y + r.d - D) < eps) out.push({ side: "n", centerFt: W - (r.x + r.w / 2), lengthFt: r.w });
+  if (Math.abs(r.x) < eps) out.push({ side: "w", centerFt: D - (r.y + r.d / 2), lengthFt: r.d });
+  return out;
+}
+
+/** Exterior wall side a zone touches and the door centre along that wall, or null. */
+export function exteriorEdgeOf(model: BuildingModel, z: Zone): { side: "n" | "s" | "e" | "w"; centerFt: number } | null {
+  const e = exteriorEdgesOf(model, z)[0];
+  return e ? { side: e.side, centerFt: e.centerFt } : null;
+}
+
+/** Which of a zone's four sides sit on an exterior wall. */
+export function isExteriorSide(model: BuildingModel, z: Zone, side: "n" | "s" | "e" | "w"): boolean {
+  return exteriorEdgesOf(model, z).some((e) => e.side === side);
 }
 
 /**

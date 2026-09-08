@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultModel, parseBuildingModel } from "@/lib/model";
-import { addZone, resizeZone } from "@/lib/model/zones";
+import { addZone, resizeZone, zoneRect } from "@/lib/model/zones";
 import { applyLayout } from "@/lib/model/layouts";
-import { addInteriorDoor, findInteriorDoor, moveInteriorDoor, removeInteriorDoor, setAutoDoor, updateInteriorDoor } from "@/lib/model/interiorDoors";
+import { addEndDoors, addInteriorDoor, addZoneDoor, defaultExteriorDoorSpec, endDoorsLabel, findInteriorDoor, moveInteriorDoor, removeInteriorDoor, setAutoDoor, updateInteriorDoor } from "@/lib/model/interiorDoors";
+import { exteriorEdgesOf, isExteriorSide } from "@/lib/model/zones";
 import { derivePartitions, interiorDoors } from "@/lib/interior/partitions";
 import { interiorGeometry } from "@/lib/geometry";
 import { estimateMaterials } from "@/lib/bom/estimate";
@@ -84,5 +85,55 @@ describe("interior doors", () => {
     expect(est.lines.find((l) => l.sku === "door.stallSlide")?.quantity).toBe(1);
     expect(est.lines.find((l) => l.sku === "hw.stallHanger")?.quantity).toBe(2);
     expect(est.lines.find((l) => l.sku === "hw.stallTrack")?.quantity).toBe(1); // 6' of track -> one 8' section
+  });
+
+  it("aisle end doors: sliding doors sized to the aisle on the outside walls it reaches", () => {
+    // 36' × 48' barn (default), 12' aisle running the full depth north-south.
+    let m = applyLayout(base(), "centerAisle", { species: "horse", supportBays: 1 });
+    const aisle = m.zones.find((z) => z.type === "aisle")!;
+    const edges = exteriorEdgesOf(m, aisle);
+    expect(edges.map((e) => e.side).sort()).toEqual(["n", "s"]);
+    expect(isExteriorSide(m, aisle, "e")).toBe(false);
+    expect(endDoorsLabel(m, aisle)).toBe("Doors at both ends");
+    const short = resizeZone(m, aisle.id, { ...zoneRect(aisle), d: zoneRect(aisle).d - 4 }, { autoGrow: false });
+    expect(endDoorsLabel(short, short.zones.find((z) => z.id === aisle.id)!)).toBe("Door at the south end");
+    expect(defaultExteriorDoorSpec(m, aisle, 12)).toMatchObject({ type: "slidingDoor", widthFt: 12, heightFt: 9 }); // eave 10' -> 9' clear
+    expect(defaultExteriorDoorSpec(m, aisle, 16)).toMatchObject({ type: "slidingDoor", widthFt: 16, swing: "biParting" });
+    expect(defaultExteriorDoorSpec(m, { type: "pen" }, 12)).toMatchObject({ type: "dutchDoor", widthFt: 4 });
+    expect(defaultExteriorDoorSpec(m, { type: "tack" }, 12)).toMatchObject({ type: "manDoor", widthFt: 3 });
+
+    const before = m.openings.length;
+    const r = addEndDoors(m, aisle.id, ["end_s", "end_n"]);
+    m = r.model;
+    expect(r.added).toEqual(["end_s", "end_n"]);
+    expect(m.openings).toHaveLength(before + 2);
+    const s = m.openings.find((o) => o.id === "end_s")!;
+    const n = m.openings.find((o) => o.id === "end_n")!;
+    expect(s).toMatchObject({ wallId: "wall_ext_s", type: "slidingDoor", widthFt: 12 });
+    expect(n).toMatchObject({ wallId: "wall_ext_n", type: "slidingDoor", widthFt: 12 });
+    // Centred on the aisle: south wall runs west->east, north wall east->west.
+    const ar = m.zones.find((z) => z.id === aisle.id)!;
+    const { x, w } = zoneRect(ar);
+    expect(s.offsetFt + s.widthFt / 2).toBeCloseTo(x + w / 2, 5);
+    expect(n.offsetFt + n.widthFt / 2).toBeCloseTo(m.footprint.kind === "rect" ? m.footprint.wFt - (x + w / 2) : 0, 5);
+    // Idempotent: an end that already has a door is skipped.
+    expect(addEndDoors(m, aisle.id).added).toEqual([]);
+    expect(() => parseBuildingModel(m)).not.toThrow();
+  });
+
+  it("addZoneDoor: a partition side gets an interior door, an outside-wall side gets an opening", () => {
+    let m = addZone(base(), { type: "pen", species: "alpaca", rect: { x: 0, y: 0, w: 10, d: 10 }, id: "p1" });
+    // West and south sides are on the outside walls; east and north face the open floor.
+    m = addZoneDoor(m, { zoneId: "p1", side: "e", id: "d_e" });
+    expect(findInteriorDoor(m, "d_e")!.door).toMatchObject({ side: "e", type: "stallSlide" });
+    expect(derivePartitions(m).some((p) => p.doors.some((d) => d.id === "d_e"))).toBe(true);
+    m = addZoneDoor(m, { zoneId: "p1", side: "w", id: "d_w" });
+    const dutch = m.openings.find((o) => o.id === "d_w")!;
+    expect(dutch).toMatchObject({ wallId: "wall_ext_w", type: "dutchDoor" });
+    expect(dutch.offsetFt + dutch.widthFt / 2).toBeCloseTo(m.footprint.kind === "rect" ? m.footprint.dFt - 5 : 0, 5);
+    // A room on the west wall gets an entry door there.
+    m = addZone(m, { type: "tack", rect: { x: 0, y: 10, w: 10, d: 8 }, id: "t" });
+    m = addZoneDoor(m, { zoneId: "t", side: "w", id: "d_t" });
+    expect(m.openings.find((o) => o.id === "d_t")).toMatchObject({ wallId: "wall_ext_w", type: "manDoor", widthFt: 3 });
   });
 });

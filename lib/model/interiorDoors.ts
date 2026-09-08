@@ -4,8 +4,10 @@
  * edges. The partition it lands in is derived (lib/interior/partitions), so
  * moving the zone moves its doors; resizing clamps them (zones.ts).
  */
-import type { BuildingModel, InteriorDoor, InteriorDoorType, Species, Zone } from "./schema";
-import { clampDoorsToRect, zoneRect, type Rect } from "./zones";
+import type { BuildingModel, InteriorDoor, InteriorDoorType, Opening, OpeningType, Species, Zone } from "./schema";
+import { clampDoorsToRect, exteriorEdgesOf, zoneRect, type ExteriorEdge, type Rect } from "./zones";
+import { EXTERIOR_WALL_IDS } from "./walls";
+import { addOpening } from "./commands";
 import { SPECIES_PRESETS } from "@/rules/animals/presets";
 import { newId } from "./ids";
 
@@ -240,4 +242,113 @@ export function findInteriorDoor(model: BuildingModel, doorId: string): { zone: 
     if (door) return { zone, door };
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Doors on a zone side that is an outside wall (aisle ends, pens, rooms).
+// Interior doors live on partitions; a side on the building's exterior wall
+// gets an exterior opening instead, sized for what the space is used for.
+// ---------------------------------------------------------------------------
+
+export interface ExteriorDoorSpec {
+  type: OpeningType;
+  widthFt: number;
+  heightFt: number;
+  swing?: Opening["swing"];
+  variant?: string;
+}
+
+/**
+ * Default outside door for a zone side: sliding doors sized to the aisle so a
+ * tractor or spreader can drive through (MWPS-3 aisle guidance in
+ * docs/research/construction-details.md §6), a Dutch door for pens, a 3' entry
+ * door for rooms. `edgeLengthFt` is the zone edge on the wall; the door never
+ * exceeds it or the eave.
+ */
+export function defaultExteriorDoorSpec(model: BuildingModel, z: Pick<Zone, "type">, edgeLengthFt: number): ExteriorDoorSpec {
+  const eave = model.eaveHeightFt;
+  if (z.type === "aisle" || z.type === "open" || z.type === "equipment" || z.type === "hay") {
+    const widthFt = edgeLengthFt >= 16 ? 16 : edgeLengthFt >= 12 ? 12 : edgeLengthFt >= 10 ? 10 : Math.max(4, Math.floor(edgeLengthFt));
+    const heightFt = Math.max(7, Math.min(widthFt >= 16 ? 12 : widthFt, eave - 1));
+    return { type: "slidingDoor", widthFt, heightFt, swing: widthFt >= 16 ? "biParting" : "slideRight" };
+  }
+  if (z.type === "pen" || z.type === "kidding") return { type: "dutchDoor", widthFt: Math.min(4, edgeLengthFt - 1), heightFt: Math.min(7, eave - 1) };
+  return { type: "manDoor", widthFt: 3, heightFt: Math.min(6.67, eave - 1), swing: "out" };
+}
+
+export interface AddZoneDoorInput {
+  zoneId: string;
+  side: InteriorDoor["side"];
+  /** Centre along the zone edge from its west/south end; default is the middle. */
+  offsetFt?: number;
+  /** Interior door type when the side is a partition. */
+  type?: InteriorDoorType;
+  widthFt?: number;
+  /** Outside door to use when the side is an exterior wall (default from the zone type). */
+  exterior?: ExteriorDoorSpec;
+  id?: string;
+}
+
+/**
+ * Add a door on one side of a zone: an interior door when that side is a
+ * partition, an opening in the exterior wall when it is the building's outside
+ * wall. Returns the new model (unchanged when nothing fits).
+ */
+export function addZoneDoor(model: BuildingModel, input: AddZoneDoorInput): BuildingModel {
+  const z = model.zones.find((x) => x.id === input.zoneId);
+  if (!z) return model;
+  const edge = exteriorEdgesOf(model, z).find((e) => e.side === input.side);
+  if (!edge) return addInteriorDoor(model, { zoneId: z.id, side: input.side, offsetFt: input.offsetFt === undefined ? undefined : input.offsetFt - (input.widthFt ?? defaultInteriorDoorSize(input.type ?? defaultInteriorDoorType(z), z.species).widthFt) / 2, type: input.type, widthFt: input.widthFt, id: input.id });
+  const spec = input.exterior ?? defaultExteriorDoorSpec(model, z, edge.lengthFt);
+  const r = zoneRect(z);
+  // Zone-edge offset (from the west or south end) → wall position (walls run clockwise).
+  const local = input.offsetFt === undefined ? edge.lengthFt / 2 : Math.max(spec.widthFt / 2, Math.min(edge.lengthFt - spec.widthFt / 2, input.offsetFt));
+  const centerFt = input.side === "s" ? r.x + local : input.side === "e" ? r.y + local : input.side === "n" ? model.footprint.kind === "rect" ? model.footprint.wFt - (r.x + local) : local : model.footprint.kind === "rect" ? model.footprint.dFt - (r.y + local) : local;
+  const wallId = EXTERIOR_WALL_IDS[input.side];
+  const next = addOpening(model, { wallId, type: spec.type, centerFt, widthFt: spec.widthFt, heightFt: spec.heightFt, swing: spec.swing, variant: spec.variant, id: input.id });
+  return next;
+}
+
+/**
+ * The ends of a zone that reach an outside wall: the short sides for an aisle
+ * (an aisle that stops short of a wall has no door there), any exterior side
+ * for other zones.
+ */
+export function endsOnOutsideWalls(model: BuildingModel, z: Zone): ExteriorEdge[] {
+  const r = zoneRect(z);
+  const edges = exteriorEdgesOf(model, z);
+  return z.type === "aisle" ? edges.filter((e) => (r.w >= r.d ? e.side === "e" || e.side === "w" : e.side === "n" || e.side === "s")) : edges;
+}
+
+/** Plain-English label for the end-doors action: "Doors at both ends", "Door at the south end", or null when no end reaches a wall. */
+export function endDoorsLabel(model: BuildingModel, z: Zone): string | null {
+  const ends = endsOnOutsideWalls(model, z);
+  if (!ends.length) return null;
+  if (z.type !== "aisle") return ends.length > 1 ? "Door on each outside wall" : `Door on the ${SIDE_WORD[ends[0].side]} wall`;
+  return ends.length > 1 ? "Doors at both ends" : `Door at the ${SIDE_WORD[ends[0].side]} end`;
+}
+
+const SIDE_WORD = { n: "north", s: "south", e: "east", w: "west" } as const;
+
+/**
+ * Sliding doors at both ends of an aisle (or one end when only one end is on an
+ * outside wall). Skips an end that already has a door. Returns the ids added.
+ */
+export function addEndDoors(model: BuildingModel, zoneId: string, ids?: string[]): { model: BuildingModel; added: string[] } {
+  const z = model.zones.find((x) => x.id === zoneId);
+  if (!z) return { model, added: [] };
+  const ends = endsOnOutsideWalls(model, z);
+  let m = model;
+  const added: string[] = [];
+  ends.forEach((e, i) => {
+    const wallId = EXTERIOR_WALL_IDS[e.side];
+    const half = e.lengthFt / 2;
+    const has = m.openings.some((o) => o.wallId === wallId && o.offsetFt + o.widthFt > e.centerFt - half + 1e-6 && o.offsetFt < e.centerFt + half - 1e-6);
+    if (has) return;
+    const id = ids?.[i] ?? newId("op");
+    const before = m.openings.length;
+    m = addZoneDoor(m, { zoneId, side: e.side, id });
+    if (m.openings.length > before) added.push(id);
+  });
+  return { model: m, added };
 }

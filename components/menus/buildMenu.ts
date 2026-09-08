@@ -8,9 +8,11 @@ import type { OpeningType } from "@/lib/model/schema";
 import { formatFtIn } from "@/lib/units";
 import { getRule } from "@/rules";
 import { PEN_SPECIES, SPECIES_PRESETS } from "@/rules/animals/presets";
-import { ROOM_PRESETS, ZONE_TYPE_LABEL, defaultPenSize, zoneRect } from "@/lib/model/zones";
+import { ROOM_PRESETS, ZONE_TYPE_LABEL, defaultPenSize, zoneRect, isExteriorSide } from "@/lib/model/zones";
+
+const SIDE_NAME = { n: "North", e: "East", s: "South", w: "West" } as const;
 import type { FixtureKind, InteriorDoorType, Species, ZoneType } from "@/lib/model/schema";
-import { INTERIOR_DOOR_PRESETS, INTERIOR_DOOR_TYPES, findInteriorDoor } from "@/lib/model/interiorDoors";
+import { INTERIOR_DOOR_PRESETS, INTERIOR_DOOR_TYPES, endDoorsLabel, findInteriorDoor } from "@/lib/model/interiorDoors";
 import { FIXTURE_PRESETS, PLACEABLE_FIXTURE_KINDS, switchedLights } from "@/lib/model/electrical";
 import { PRESET_LABEL } from "@/lib/store/useViewStore";
 import { DRAIN_PRESETS, OUTLET_LABEL } from "@/lib/model/drainage";
@@ -179,10 +181,20 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
           ? [{ label: "Resize to", children: [preset.minPen, preset.recommendedPen, [14, 16] as [number, number], [16, 16] as [number, number]].map(([w, d]) => ({ label: `${w}×${d}`, onSelect: () => ps.resizeZone(z.id, { ...r, w, d }, vs.autoGrow) })) }]
           : []),
         ...(z.type === "pen" ? [{ label: `${z.outsideAccess ? "✓ " : "   "}Door to the outside (Dutch door)`, onSelect: () => ps.setOutsideAccess(z.id, !z.outsideAccess) }] : []),
+        ...(endDoorsLabel(model, z)
+          ? [{ label: endDoorsLabel(model, z)!, onSelect: () => { const ids = ps.addEndDoors(z.id); if (ids[0]) ps.select(ids[0]); } }]
+          : []),
+        {
+          label: "Add a door on the…",
+          children: (["n", "e", "s", "w"] as const).map((side) => ({
+            label: `${SIDE_NAME[side]} side${isExteriorSide(model, z, side) ? " (outside wall)" : ""}`,
+            onSelect: () => { const id = ps.addZoneDoor({ zoneId: z.id, side }); if (id) ps.select(id); },
+          })),
+        },
         ...(z.type !== "aisle" && z.type !== "open"
           ? [
               {
-                label: "Add a door",
+                label: "Add a door by clicking",
                 children: INTERIOR_DOOR_TYPES.map((t: InteriorDoorType) => ({
                   label: INTERIOR_DOOR_PRESETS[t].label,
                   onSelect: () => {

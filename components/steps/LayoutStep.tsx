@@ -121,8 +121,8 @@ export function LayoutStep() {
               options={[...INTERIOR_DOOR_TYPES.map((t) => ({ value: `int:${t}`, label: INTERIOR_DOOR_PRESETS[t].label, group: "Stall & room doors (inside walls)" })), ...DOOR_PALETTE.map((d) => ({ value: `ext:${d.key}`, label: d.label, group: "Outside doors (outside walls)" }))]}
             />
           ) : null}
-          {tool === "interiorDoor" ? <p className="text-[11px] leading-snug text-muted">{INTERIOR_DOOR_PRESETS[doorType].hint} Stalls get a sliding door to the aisle by default; add more or change them here.</p> : null}
-          {tool === "door" ? <p className="text-[11px] leading-snug text-muted">Click one of the outside walls to place it. Sliding, overhead and roll-up doors are also in the Outside step.</p> : null}
+          {tool === "interiorDoor" ? <p className="text-[11px] leading-snug text-muted">{INTERIOR_DOOR_PRESETS[doorType].hint} Stalls get a sliding door to the aisle by default. Click an outside wall to add a sliding, Dutch or entry door there instead.</p> : null}
+          {tool === "door" ? <p className="text-[11px] leading-snug text-muted">Click an outside wall to place it. Clicking a stall or room wall instead adds that space&apos;s usual inside door.</p> : null}
           <Toggle checked={autoGrow} onChange={setAutoGrow} label="Grow the building when a stall goes past a wall" hint="On: the walls move out to the next post. Off: the stall is flagged instead." testId="auto-grow" />
         </Section>
 
