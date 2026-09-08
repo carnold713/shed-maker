@@ -46,6 +46,14 @@ export interface Circuit {
 
 export interface RouteSegment {
   circuitId: string;
+  /**
+   * "feed": the unswitched run from the panel through the switch boxes and any
+   * device with no switch. "switchLeg": the switched run from one switch out
+   * to only the lights it controls. Lights on different switches never share
+   * a wire directly, even on the same breaker.
+   */
+  kind: "feed" | "switchLeg";
+  switchId?: string;
   /** Plan polyline, feet. */
   points: { x: number; y: number }[];
   lengthFt: number;
@@ -295,23 +303,58 @@ export function deriveElectrical(model: BuildingModel): ElectricalDerived {
     byKind.set(k, [...(byKind.get(k) ?? []), f]);
   }
 
-  const makeCircuit = (kind: CircuitKind, members: ElectricalFixture[]) => {
+  // Which switch runs each light (assigned, else the nearest switch); the
+  // switched conductor leaves that switch, so lights are chained per switch.
+  const switchLegs: SwitchLeg[] = fixtures.filter((f) => f.kind === "switch").map((s) => ({ switchId: s.id, lightIds: switchedLights(model, s.id).map((l) => l.id) }));
+  const switchOf = new Map<string, ElectricalFixture>();
+  for (const leg of switchLegs) {
+    const sw = fixtures.find((f) => f.id === leg.switchId);
+    if (sw) for (const id of leg.lightIds) switchOf.set(id, sw);
+  }
+
+  /** A run of one wire: a switch and the lights it controls, or one unswitched device. */
+  type Group = { switch?: ElectricalFixture; devices: ElectricalFixture[] };
+  const chainPath = (start: { x: number; y: number }, items: ElectricalFixture[]) => {
+    const ordered = chainFrom(start, items);
+    const pts: { x: number; y: number }[] = [];
+    let prev = { x: start.x, y: start.y };
+    let ft = 0;
+    for (const f of ordered) {
+      const seg = pathBetween(W, D, prev, { x: f.x, y: f.y }).map((p) => ({ x: p.x, y: p.y }));
+      ft += polylineLength(seg);
+      pts.push(...(pts.length ? seg.slice(1) : seg));
+      prev = { x: f.x, y: f.y };
+    }
+    return { ordered, pts, ft };
+  };
+
+  const makeCircuit = (kind: CircuitKind, groups: Group[]) => {
     const rules = CIRCUIT_RULES[kind];
-    const volts: 120 | 240 = kind === "dedicated" ? members[0].volts : 120;
-    const connectedWatts = members.reduce((s, f) => s + (f.kind === "outlet" ? RECEPTACLE_VA : f.watts), 0);
+    const loads = groups.flatMap((g) => g.devices);
+    const volts: 120 | 240 = kind === "dedicated" ? loads[0].volts : 120;
+    const connectedWatts = loads.reduce((s, f) => s + (f.kind === "outlet" ? RECEPTACLE_VA : f.watts), 0);
     const designWatts = rules.continuous ? connectedWatts * 1.25 : connectedWatts;
     const breakerAmps = kind === "dedicated" ? breakerFor(designWatts, volts) : rules.breaker;
     const loadAmps = connectedWatts / volts;
-    // Route: panel -> chain of devices.
-    const ordered = chainFrom({ x: panel.x, y: panel.y }, members);
-    const pts: { x: number; y: number }[] = [];
-    let prev: { x: number; y: number } = { x: panel.x, y: panel.y };
-    let planFt = 0;
-    for (const f of ordered) {
-      const seg = pathBetween(W, D, prev, f);
-      planFt += polylineLength(seg);
-      pts.push(...(pts.length ? seg.slice(1) : seg));
-      prev = f;
+    const id = `ckt_${kind}_${++counters[kind]}`;
+    // Feed: panel -> each switch box (or unswitched device) in nearest order.
+    const stopOf = new Map<string, Group>();
+    for (const g of groups) stopOf.set((g.switch ?? g.devices[0]).id, g);
+    const feed = chainPath({ x: panel.x, y: panel.y }, groups.map((g) => g.switch ?? g.devices[0]));
+    let planFt = feed.ft;
+    const circuitRoutes: RouteSegment[] = [{ circuitId: id, kind: "feed", points: feed.pts, lengthFt: +feed.ft.toFixed(1) }];
+    const ordered: ElectricalFixture[] = [];
+    for (const stop of feed.ordered) {
+      const g = stopOf.get(stop.id)!;
+      if (!g.switch) {
+        ordered.push(stop);
+        continue;
+      }
+      // Switch leg: this switch -> only its lights, daisy-chained.
+      const leg = chainPath({ x: g.switch.x, y: g.switch.y }, g.devices);
+      planFt += leg.ft;
+      circuitRoutes.push({ circuitId: id, kind: "switchLeg", switchId: g.switch.id, points: leg.pts, lengthFt: +leg.ft.toFixed(1) });
+      ordered.push(g.switch, ...leg.ordered);
     }
     const drops = ordered.reduce((s, f) => s + Math.abs(routeHeightFt - f.mountFt), 0) + Math.abs(routeHeightFt - (placedPanel?.mountFt ?? 5));
     const runFt = planFt + drops;
@@ -323,7 +366,6 @@ export function deriveElectrical(model: BuildingModel): ElectricalDerived {
       upsized = true;
       dropPct = (2 * K_COPPER * loadAmps * runFt) / cmOf(wireAwg) / volts * 100;
     }
-    const id = `ckt_${kind}_${++counters[kind]}`;
     circuits.push({
       id,
       label: `${LABEL_PREFIX[kind]}${counters[kind]}`,
@@ -342,31 +384,68 @@ export function deriveElectrical(model: BuildingModel): ElectricalDerived {
       voltageDropPct: +dropPct.toFixed(2),
       upsizedForDrop: upsized,
     });
-    routes.push({ circuitId: id, points: pts, lengthFt: +planFt.toFixed(1) });
+    routes.push(...circuitRoutes);
   };
 
   for (const kind of ["lighting", "receptacle", "fan", "waterer", "dedicated"] as CircuitKind[]) {
     const members = byKind.get(kind) ?? [];
     if (!members.length) continue;
     if (kind === "dedicated") {
-      for (const f of members) makeCircuit(kind, [f]);
+      for (const f of members) makeCircuit(kind, [{ devices: [f] }]);
       continue;
     }
     const rules = CIRCUIT_RULES[kind];
-    // Fill circuits along a spatial chain so each one covers a contiguous run.
-    const ordered = chainFrom({ x: panel.x, y: panel.y }, members);
-    let group: ElectricalFixture[] = [];
+    const designW = (f: ElectricalFixture) => (f.kind === "outlet" ? RECEPTACLE_VA : f.watts) * (rules.continuous ? 1.25 : 1);
+    // Wire runs: lights travel with their switch; everything else is its own stop.
+    const runs: Group[] = [];
+    if (kind === "lighting") {
+      const bySwitch = new Map<string, Group>();
+      for (const f of members) {
+        const sw = switchOf.get(f.id);
+        if (!sw) {
+          runs.push({ devices: [f] });
+          continue;
+        }
+        const g = bySwitch.get(sw.id) ?? { switch: sw, devices: [] };
+        g.devices.push(f);
+        bySwitch.set(sw.id, g);
+      }
+      // A switch whose lights alone overload a circuit is split into runs that each fit (a 2-gang box).
+      for (const g of bySwitch.values()) {
+        let part: ElectricalFixture[] = [];
+        let partW = 0;
+        for (const f of chainFrom(g.switch!, g.devices)) {
+          if (part.length && partW + designW(f) > rules.maxDesignWatts) {
+            runs.push({ switch: g.switch, devices: part });
+            part = [];
+            partW = 0;
+          }
+          part.push(f);
+          partW += designW(f);
+        }
+        if (part.length) runs.push({ switch: g.switch, devices: part });
+      }
+    } else for (const f of members) runs.push({ devices: [f] });
+    // Fill circuits along a spatial chain of the stops so each one covers a contiguous run.
+    const stopOf = new Map<string, Group>();
+    for (const g of runs) stopOf.set((g.switch ?? g.devices[0]).id, g);
+    const stops = chainFrom({ x: panel.x, y: panel.y }, runs.map((g) => g.switch ?? g.devices[0]));
+    let group: Group[] = [];
     let groupWatts = 0;
-    for (const f of ordered) {
-      const w = (f.kind === "outlet" ? RECEPTACLE_VA : f.watts) * (rules.continuous ? 1.25 : 1);
-      const tooMany = kind === "receptacle" && group.length >= MAX_RECEPTACLES_PER_CIRCUIT;
+    let groupDevices = 0;
+    for (const stop of stops) {
+      const g = stopOf.get(stop.id)!;
+      const w = g.devices.reduce((s, f) => s + designW(f), 0);
+      const tooMany = kind === "receptacle" && groupDevices >= MAX_RECEPTACLES_PER_CIRCUIT;
       if (group.length && (groupWatts + w > rules.maxDesignWatts || tooMany)) {
         makeCircuit(kind, group);
         group = [];
         groupWatts = 0;
+        groupDevices = 0;
       }
-      group.push(f);
+      group.push(g);
       groupWatts += w;
+      groupDevices += g.devices.length;
     }
     if (group.length) makeCircuit(kind, group);
   }
@@ -428,8 +507,6 @@ export function deriveElectrical(model: BuildingModel): ElectricalDerived {
   for (const c of circuits) wireMap.set(c.wireAwg, (wireMap.get(c.wireAwg) ?? 0) + c.wireFt);
   const wireByAwg = [...wireMap.entries()].map(([awg, ft]) => ({ awg, ft })).sort((a, b) => b.awg - a.awg);
   const conduitFt = model.electrical.wiring === "pvcConduit" ? Math.ceil(routes.reduce((s, r) => s + r.lengthFt, 0) * 1.1) : 0;
-
-  const switchLegs: SwitchLeg[] = fixtures.filter((f) => f.kind === "switch").map((s) => ({ switchId: s.id, lightIds: switchedLights(model, s.id).map((l) => l.id) }));
 
   return {
     fixtures,

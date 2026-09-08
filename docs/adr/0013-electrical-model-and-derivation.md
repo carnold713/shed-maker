@@ -17,3 +17,8 @@ The owner wants to plan lights and outlets, see the amperage and voltage they ne
 - The derivation is O(n²) in fixtures per circuit kind (nearest-neighbour ordering) — fine for barns (< 200 devices).
 - Circuit assignment is deterministic for a given model; users cannot pin a device to a circuit yet (`model.overrides` is the intended path).
 - Not modelled: three-phase, well pumps, door openers, exterior tank de-icers, conduit fill — listed in the research doc §11 as open questions.
+
+## Addendum 2026-09-08 — routes go through the switches
+
+The first cut chained every light on a circuit in nearest order, so lights on different switches looked wired to each other. Routes are now two kinds per circuit (`RouteSegment.kind`): a **feed** from the panel through each switch box and any unswitched device, and one **switch leg** per switch from that switch to only the lights it controls (`switchedLights`, assigned else nearest). Lighting circuits are filled by switch group, so a switch and its lights stay on one breaker unless the group alone exceeds 80 % of a 15 A circuit, in which case it splits into two runs from the same box. Switches now appear in the circuit's `fixtureIds`. Wire length, voltage drop and the 3D wire boxes follow the real path; the plan, E1 sheet and 3D draw the feed in the circuit colour and the legs in the switch colour (`docs/research/electrical-planning.md` §6, "Switch legs").
+

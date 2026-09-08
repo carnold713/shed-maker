@@ -183,4 +183,45 @@ describe("switches, lights and walls", () => {
     const box = g.find((b) => b.entityId === l1.id && b.kind === "fixture")!;
     expect(box.size[2]).toBe(4); // rotated strip runs north–south (world z)
   });
+
+  it("routes the feed through the switch boxes and runs each switch's leg only to its own lights", () => {
+    let m = autoPlacePanel(base());
+    m = addFixture(m, { kind: "switch", x: 1, y: 6 });
+    m = addFixture(m, { kind: "switch", x: 23, y: 30 });
+    const [swA, swB] = m.electrical.fixtures.filter((f) => f.kind === "switch");
+    m = addFixture(m, { kind: "light", x: 6, y: 6 });
+    m = addFixture(m, { kind: "light", x: 6, y: 12 });
+    m = addFixture(m, { kind: "light", x: 18, y: 30 });
+    m = addFixture(m, { kind: "light", x: 18, y: 24 });
+    const lights = m.electrical.fixtures.filter((f) => f.kind === "light");
+    const d = deriveElectrical(m);
+    const ckt = d.circuits.find((c) => c.kind === "lighting")!;
+    expect(d.circuits.filter((c) => c.kind === "lighting")).toHaveLength(1); // one 15 A breaker carries all four
+    expect(ckt.fixtureIds).toContain(swA.id);
+    expect(ckt.fixtureIds).toContain(swB.id);
+    const feed = d.routes.filter((r) => r.circuitId === ckt.id && r.kind === "feed");
+    const legs = d.routes.filter((r) => r.circuitId === ckt.id && r.kind === "switchLeg");
+    expect(feed).toHaveLength(1);
+    expect(legs).toHaveLength(2);
+    // The feed starts at the panel and visits both switch boxes but never a light.
+    expect(feed[0].points[0]).toEqual({ x: d.panel.x, y: d.panel.y });
+    for (const sw of [swA, swB]) expect(feed[0].points.some((p) => Math.abs(p.x - sw.x) < 1e-6 && Math.abs(p.y - sw.y) < 1e-6)).toBe(true);
+    for (const l of lights) expect(feed[0].points.some((p) => Math.abs(p.x - l.x) < 1e-6 && Math.abs(p.y - l.y) < 1e-6)).toBe(false);
+    // Each leg leaves its switch and reaches exactly the lights that switch controls.
+    for (const sw of [swA, swB]) {
+      const leg = legs.find((r) => r.switchId === sw.id)!;
+      expect(leg.points[0]).toEqual({ x: sw.x, y: sw.y });
+      const mine = switchedLights(m, sw.id);
+      expect(mine).toHaveLength(2);
+      for (const l of mine) expect(leg.points.some((p) => Math.abs(p.x - l.x) < 1e-6 && Math.abs(p.y - l.y) < 1e-6)).toBe(true);
+      for (const l of lights.filter((x) => !mine.some((y) => y.id === x.id))) expect(leg.points.some((p) => Math.abs(p.x - l.x) < 1e-6 && Math.abs(p.y - l.y) < 1e-6)).toBe(false);
+    }
+    // Wire length counts the feed and both legs.
+    expect(ckt.runFt).toBeGreaterThan(feed[0].lengthFt + legs[0].lengthFt + legs[1].lengthFt - 0.2);
+    // 3D: the leg wires belong to their switch, the feed to the circuit.
+    const g = electricalGeometry(m);
+    expect(g.some((b) => b.kind === "wire" && b.entityId === swA.id)).toBe(true);
+    expect(g.some((b) => b.kind === "wire" && b.entityId === ckt.id)).toBe(true);
+  });
 });
+

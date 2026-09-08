@@ -36,29 +36,15 @@ export function FixtureLayer({
   return (
     <g data-testid="fixture-layer">
       {showRoutes
-        ? derived.routes.map((route) => {
+        ? derived.routes.map((route, i) => {
             const c = derived.circuits.find((x) => x.id === route.circuitId);
-            const color = CIRCUIT_COLOR[c?.kind ?? "lighting"];
             const pts = route.points.map((p) => `${px(p.x)},${py(p.y)}`).join(" ");
-            return <polyline key={route.circuitId} points={pts} fill="none" stroke={color} strokeWidth={1.2} strokeDasharray="5 3" opacity={0.75} pointerEvents="none" />;
-          })
-        : null}
-      {/* switch legs: which lights a switch controls */}
-      {showRoutes
-        ? derived.switchLegs.flatMap((leg) => {
-            const s = fixtures.find((f) => f.id === leg.switchId);
-            if (!s) return [];
-            return leg.lightIds.map((id) => {
-              const l = fixtures.find((f) => f.id === id);
-              if (!l) return null;
-              const x1 = px(s.x);
-              const y1 = py(s.y);
-              const x2 = px(l.x);
-              const y2 = py(l.y);
-              const mx = (x1 + x2) / 2 + (y1 - y2) * 0.15;
-              const my = (y1 + y2) / 2 + (x2 - x1) * 0.15;
-              return <path key={`${leg.switchId}_${id}`} d={`M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`} fill="none" stroke="#7a5aa6" strokeWidth={1} strokeDasharray="2 3" opacity={0.8} pointerEvents="none" data-testid="plan-switch-leg" />;
-            });
+            if (route.kind === "switchLeg") {
+              // Switched run: from the switch out to only the lights it controls.
+              return <polyline key={`${route.circuitId}_${route.switchId}_${i}`} points={pts} fill="none" stroke="#7a5aa6" strokeWidth={1.1} strokeDasharray="2 3" opacity={0.85} pointerEvents="none" data-testid="plan-switch-leg" />;
+            }
+            const color = CIRCUIT_COLOR[c?.kind ?? "lighting"];
+            return <polyline key={`${route.circuitId}_feed`} points={pts} fill="none" stroke={color} strokeWidth={1.2} strokeDasharray="5 3" opacity={0.75} pointerEvents="none" data-testid="plan-circuit-feed" />;
           })
         : null}
       {fixtures.map((f) => {

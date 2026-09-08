@@ -274,7 +274,7 @@ export function PlanSheet({ model, framing, partitions, electrical, drainage, mo
         <FixtureLayer fixtures={model.electrical.fixtures} derived={electrical} px={px} py={py} scale={scale} selection={null} hovered={null} onPointerDown={() => {}} onContextMenu={() => {}} onHover={() => {}} showRoutes />
       ) : null}
       {mode === "electrical" && electrical
-        ? electrical.routes.map((r) => {
+        ? electrical.routes.filter((r) => r.kind === "feed").map((r) => {
             const c = electrical.circuits.find((x) => x.id === r.circuitId);
             const last = r.points[r.points.length - 1];
             return last ? (

@@ -60,7 +60,7 @@ export function electricalGeometry(model: BuildingModel): BoxMember[] {
   const e = deriveElectrical(model);
   const h = e.routeHeightFt;
   // Runs: one thin box per polyline segment at the wiring-belt height, then a drop to each device.
-  for (const r of e.routes) {
+  e.routes.forEach((r, ri) => {
     const pts = r.points.map((p) => insetPoint(W, D, p));
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1];
@@ -68,9 +68,9 @@ export function electricalGeometry(model: BuildingModel): BoxMember[] {
       const len = Math.hypot(b.x - a.x, b.y - a.y);
       if (len < 0.05) continue;
       const yaw = Math.atan2(b.y - a.y, b.x - a.x);
-      out.push({ id: `wire_${r.circuitId}_${i}`, kind: "wire", layer: "electrical", entityId: r.circuitId, material: "wire", center: planToWorld((a.x + b.x) / 2, (a.y + b.y) / 2, h), size: [len, WIRE_FT, WIRE_FT], rotation: [0, yaw, 0] });
+      out.push({ id: `wire_${r.circuitId}_${ri}_${i}`, kind: "wire", layer: "electrical", entityId: r.kind === "switchLeg" && r.switchId ? r.switchId : r.circuitId, material: "wire", center: planToWorld((a.x + b.x) / 2, (a.y + b.y) / 2, h), size: [len, WIRE_FT, WIRE_FT], rotation: [0, yaw, 0] });
     }
-  }
+  });
   for (const f of model.electrical.fixtures) {
     const p = f.wallId ? insetPoint(W, D, f) : f;
     const top = Math.max(h, f.mountFt);
