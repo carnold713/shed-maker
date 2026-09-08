@@ -8,6 +8,22 @@
  */
 import type { BuildingModel, FenceKind, Run } from "@/lib/model/schema";
 import { FENCE_PRESETS, runArea, runEdges, runSqFtPerHead, type RunEdge } from "@/lib/model/runs";
+import { fenceAreaSqFt, fenceSegments } from "@/lib/model/fences";
+
+export interface FenceLineTakeoff {
+  fenceId: string;
+  name: string;
+  closed: boolean;
+  lengthFt: number;
+  /** Enclosed area for a closed line, square feet. */
+  areaSqFt: number;
+  fenceKind: FenceKind;
+  heightFt: number;
+  corners: number;
+  linePosts: number;
+  gatePosts: number;
+  gates: { widthFt: number; kind: "walk" | "drive" }[];
+}
 
 export interface RunFencing {
   runId: string;
@@ -49,6 +65,8 @@ export interface FenceKindTakeoff {
 
 export interface FencingDerived {
   runs: RunFencing[];
+  /** Free fence lines drawn on the site. */
+  fences: FenceLineTakeoff[];
   byKind: FenceKindTakeoff[];
   totalFenceFt: number;
   totalPosts: number;
@@ -154,13 +172,45 @@ export function deriveFencing(model: BuildingModel): FencingDerived {
     if (r.fence.kind === "electric") chargers = 1;
     if (r.fence.kind === "poultryNet") notes.push(`${r.name}: bury a 12" skirt of the mesh outward and cover the top — hawks and diggers.`);
   }
+  // Free fence lines: every corner is a post; line posts at the spacing along each straight; gates as on runs.
+  const perFence: FenceLineTakeoff[] = [];
+  for (const f of model.fences) {
+    const preset = FENCE_PRESETS[f.kind];
+    const segs = fenceSegments(f);
+    const lengthFt = segs.reduce((s, x) => s + x.lengthFt, 0);
+    const gateFt = f.gates.reduce((s, g) => s + g.widthFt, 0);
+    const linePosts = segs.reduce((s, x) => s + Math.max(0, Math.ceil(x.lengthFt / preset.postSpacingFt) - 1), 0);
+    const corners = f.points.length;
+    const gatePosts = f.gates.length * 2;
+    const gates = f.gates.map((g) => ({ widthFt: stockGateFt(g.widthFt), kind: (g.widthFt >= 10 ? "drive" : "walk") as "walk" | "drive" }));
+    for (const g of gates) gateCounts.set(g.widthFt, (gateCounts.get(g.widthFt) ?? 0) + 1);
+    perFence.push({ fenceId: f.id, name: f.name, closed: f.closed, lengthFt: +lengthFt.toFixed(1), areaSqFt: Math.round(fenceAreaSqFt(f)), fenceKind: f.kind, heightFt: f.heightFt, corners, linePosts, gatePosts, gates });
+    const k = byKind.get(f.kind) ?? { kind: f.kind, label: preset.label, fenceFt: 0, linePosts: 0, cornerPosts: 0, gatePosts: 0, braces: 0, rolls: 0, boards: 0, panels: 0, strandFt: 0, insulators: 0, topRailBoards: 0, concreteBags: 0, sku: preset.sku };
+    const netFt = Math.max(0, lengthFt - gateFt);
+    k.fenceFt += netFt;
+    k.linePosts += linePosts;
+    k.cornerPosts += corners;
+    k.gatePosts += gatePosts;
+    if (preset.braced) k.braces += corners + gatePosts;
+    if (preset.material === "roll" && preset.unitFt) k.rolls += netFt / preset.unitFt;
+    if (preset.material === "board" && preset.unitFt && preset.rails) k.boards += Math.ceil(netFt / preset.unitFt) * preset.rails;
+    if (preset.material === "panel" && preset.unitFt) k.panels += Math.ceil(netFt / preset.unitFt);
+    if (preset.material === "strand" && preset.rails) {
+      k.strandFt += netFt * preset.rails;
+      k.insulators += (linePosts + corners + gatePosts) * preset.rails;
+    }
+    if (f.topRail && preset.material !== "board") k.topRailBoards += Math.ceil(netFt / 16);
+    k.concreteBags += corners + gatePosts * 2;
+    byKind.set(f.kind, k);
+    if (f.kind === "electric") chargers = 1;
+  }
   for (const k of byKind.values()) {
     k.rolls = Math.ceil(k.rolls);
     k.fenceFt = +k.fenceFt.toFixed(1);
   }
-  const totalFenceFt = +perRun.reduce((s, r) => s + r.fenceFt, 0).toFixed(1);
-  const totalPosts = perRun.reduce((s, r) => s + r.linePosts + r.cornerPosts + r.gatePosts, 0);
+  const totalFenceFt = +(perRun.reduce((s, r) => s + r.fenceFt, 0) + perFence.reduce((s, f) => s + f.lengthFt, 0)).toFixed(1);
+  const totalPosts = perRun.reduce((s, r) => s + r.linePosts + r.cornerPosts + r.gatePosts, 0) + perFence.reduce((s, f) => s + f.linePosts + f.corners + f.gatePosts, 0);
   if (runs.some((r) => r.fence.kind === "noClimb" || r.fence.kind === "wovenWire")) notes.push("Wire fences: set corner and gate posts in concrete with an H-brace, stretch the wire from the brace, staple loosely so it can move with temperature.");
-  if (runs.length) notes.push("Post holes: line posts 30–36\" deep (a third of the post), corner and gate posts 42–48\" and below frost; grade the run away from the barn at 2% so water leaves the door.");
-  return { runs: perRun, byKind: [...byKind.values()], totalFenceFt, totalPosts, gates: [...gateCounts.entries()].sort((a, b) => a[0] - b[0]).map(([widthFt, count]) => ({ widthFt, count })), chargers, notes };
+  if (runs.length || model.fences.length) notes.push("Post holes: line posts 30–36\" deep (a third of the post), corner and gate posts 42–48\" and below frost; grade the run away from the barn at 2% so water leaves the door.");
+  return { runs: perRun, fences: perFence, byKind: [...byKind.values()], totalFenceFt, totalPosts, gates: [...gateCounts.entries()].sort((a, b) => a[0] - b[0]).map(([widthFt, count]) => ({ widthFt, count })), chargers, notes };
 }

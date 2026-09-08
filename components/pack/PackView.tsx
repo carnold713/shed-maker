@@ -20,6 +20,7 @@ import { OPENING_PRESETS } from "@/lib/model/openings";
 import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
 import { FENCE_PRESETS, runGuidanceFor } from "@/lib/model/runs";
 import { deriveFencing } from "@/lib/site/fencing";
+import { formatArea } from "@/lib/model/fences";
 import { FIXTURE_PRESETS } from "@/lib/model/electrical";
 import { SPECIES_PRESETS } from "@/rules/animals/presets";
 import { formatFtIn } from "@/lib/units";
@@ -64,7 +65,7 @@ export function PackView({ projectId, model }: { projectId: string; model: Build
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const name = model.meta.name;
   const walls = model.walls.filter((w) => w.role === "exterior");
-  const sheets = ["G0", ...(model.runs.length ? ["A0"] : []), "A1", "S1", ...(d.drainage ? ["P1"] : []), "S2", "S3", ...(d.electrical ? ["E1"] : []), "A2", "M1", "M2", "M3", "M4"];
+  const sheets = ["G0", ...(model.runs.length || model.fences.length ? ["A0"] : []), "A1", "S1", ...(d.drainage ? ["P1"] : []), "S2", "S3", ...(d.electrical ? ["E1"] : []), "A2", "M1", "M2", "M3", "M4"];
   const total = sheets.length;
   const n = (code: string) => sheets.indexOf(code) + 1;
   const stalls = model.zones.filter((z) => z.type === "pen");
@@ -117,14 +118,14 @@ export function PackView({ projectId, model }: { projectId: string; model: Build
                 ["Checks", d.report.errors ? `${d.report.errors} must-fix, ${d.report.warnings} warnings` : d.report.warnings ? `${d.report.warnings} warnings` : "all clear"],
               ]}
             />
-            <Table head={["Sheet", "Title"]} rows={[["G0", "Cover & index"], ...(model.runs.length ? [["A0", "Site plan: runs, fences & gates"]] : []), ["A1", "Floor plan"], ["S1", "Foundation & post plan"], ...(d.drainage ? [["P1", "Floor drainage plan (for the concrete crew)"]] : []), ["S2", "Wall framing elevations"], ["S3", "Roof framing plan"], ...(d.electrical ? [["E1", "Electrical plan & panel schedule"]] : []), ["A2", "Door, window & room schedules"], ["M1", "Materials & cost estimate"], ["M2", "Cut list"], ["M3", "Hardware schedule"], ["M4", "Build sequence"]]} />
+            <Table head={["Sheet", "Title"]} rows={[["G0", "Cover & index"], ...(model.runs.length || model.fences.length ? [["A0", "Site plan: runs, fences & gates"]] : []), ["A1", "Floor plan"], ["S1", "Foundation & post plan"], ...(d.drainage ? [["P1", "Floor drainage plan (for the concrete crew)"]] : []), ["S2", "Wall framing elevations"], ["S3", "Roof framing plan"], ...(d.electrical ? [["E1", "Electrical plan & panel schedule"]] : []), ["A2", "Door, window & room schedules"], ["M1", "Materials & cost estimate"], ["M2", "Cut list"], ["M3", "Hardware schedule"], ["M4", "Build sequence"]]} />
             <p className="text-[10px] leading-relaxed text-muted">These drawings are a planning and communication aid generated from a model. Framing is prescriptive post-frame practice; loads, foundations and the electrical design must be confirmed by a licensed professional and your building department before construction.</p>
           </div>
         </div>
       </Sheet>
 
       {/* A0 site plan: runs, fences and gates (only when there are runs) */}
-      {model.runs.length ? (
+      {model.runs.length || model.fences.length ? (
         <Sheet n={n("A0")} total={total} code="A0" title="Site plan: runs, fences & gates" project={name} date={date}>
           <div className="grid grid-cols-[1.35fr_1fr] gap-4">
             <PlanSheet model={model} framing={d.framing} partitions={d.partitions} electrical={null} mode="site" widthPx={600} heightPx={SH} />
@@ -138,6 +139,13 @@ export function PackView({ projectId, model }: { projectId: string; model: Build
                   return [fr.name, `${r.headCount} ${r.species ? SPECIES_PRESETS[r.species].label.split(" /")[0].toLowerCase() : "animal"}${r.headCount > 1 ? "s" : ""}`, `${formatFtIn(r.rect.w)} × ${formatFtIn(r.rect.d)} · ${fr.areaSqFt.toLocaleString()} sq ft`, `${fr.sqFtPerHead.toLocaleString()} sq ft${fr.sqFtPerHead < g.minSqFtPerHead ? " (low)" : ""}`, `${FENCE_PRESETS[fr.fenceKind].label} ${formatFtIn(fr.heightFt)}`, fr.gates.map((gt) => `${gt.widthFt}' ${gt.kind}`).join(", ") || "—"];
                 })}
               />
+              {d.fencing.fences.length ? (
+                <Table
+                  testId="fence-lines"
+                  head={["Fence line", "Shape", "Length", "Inside", "Fence", "Gates"]}
+                  rows={d.fencing.fences.map((fl) => [fl.name, fl.closed ? `closed · ${fl.corners} corners` : `open · ${fl.corners} corners`, `${fl.lengthFt}'`, fl.areaSqFt ? formatArea(fl.areaSqFt) : "—", `${FENCE_PRESETS[fl.fenceKind].label} ${formatFtIn(fl.heightFt)}`, fl.gates.map((gt) => `${gt.widthFt}' ${gt.kind}`).join(", ") || "—"])}
+                />
+              ) : null}
               <Table
                 testId="fence-schedule"
                 head={["Fence", "Length", "Line posts", "Corner / gate posts", "Braces", "Material"]}

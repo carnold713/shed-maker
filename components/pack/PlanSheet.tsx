@@ -12,6 +12,7 @@ import { formatFtIn } from "@/lib/units";
 import { FixtureLayer } from "@/components/plan/FixtureLayer";
 import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
 import { FENCE_PRESETS, runEdges } from "@/lib/model/runs";
+import { fenceAreaSqFt, fenceLengthFt, formatArea, pointOnFence } from "@/lib/model/fences";
 import { DrainLayer } from "@/components/plan/DrainLayer";
 import type { DrainageDerived } from "@/lib/plumbing/drainage";
 
@@ -58,13 +59,21 @@ export function PlanSheet({ model, framing, partitions, electrical, drainage, mo
     maxX = Math.max(maxX, p.x);
     maxY = Math.max(maxY, p.y);
   }
-  if (mode === "site")
+  if (mode === "site") {
     for (const r of model.runs) {
       minX = Math.min(minX, r.rect.x);
       minY = Math.min(minY, r.rect.y);
       maxX = Math.max(maxX, r.rect.x + r.rect.w);
       maxY = Math.max(maxY, r.rect.y + r.rect.d);
     }
+    for (const f of model.fences)
+      for (const p of f.points) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      }
+  }
   const margin = 66;
   const scale = Math.min((widthPx - 2 * margin) / (maxX - minX), (heightPx - 2 * margin) / (maxY - minY));
   const ox = margin + ((widthPx - 2 * margin) - (maxX - minX) * scale) / 2 - minX * scale;
@@ -162,6 +171,23 @@ export function PlanSheet({ model, framing, partitions, electrical, drainage, mo
                 <text x={px(r.rect.x + r.rect.w / 2)} y={py(r.rect.y + r.rect.d / 2) + fs} textAnchor="middle" fontSize={fs - 1} fill="#4a4741">
                   {formatFtIn(r.rect.w)} × {formatFtIn(r.rect.d)} · {FENCE_PRESETS[r.fence.kind].label} {formatFtIn(r.fence.heightFt)}
                 </text>
+              </g>
+            );
+          })
+        : null}
+      {mode === "site"
+        ? model.fences.map((f) => {
+            const pts = f.points.map((p) => `${px(p.x)},${py(p.y)}`).join(" ");
+            const cx = f.points.reduce((s, p) => s + p.x, 0) / f.points.length;
+            const cy = f.points.reduce((s, p) => s + p.y, 0) / f.points.length;
+            const area = fenceAreaSqFt(f);
+            return (
+              <g key={f.id} data-testid="sheet-fence">
+                {f.closed ? <polygon points={pts} fill="#eef3e6" stroke="#1c1b19" strokeWidth={1} strokeDasharray="5 2 1 2" /> : <polyline points={pts} fill="none" stroke="#1c1b19" strokeWidth={1} strokeDasharray="5 2 1 2" />}
+                {f.points.map((p, i) => <circle key={i} cx={px(p.x)} cy={py(p.y)} r={1.6} fill="#1c1b19" />)}
+                {f.gates.map((g) => { const a = pointOnFence(f, g.seg, g.offsetFt); const b = pointOnFence(f, g.seg, g.offsetFt + g.widthFt); if (!a || !b) return null; return (<g key={g.id}><line x1={px(a.x)} y1={py(a.y)} x2={px(b.x)} y2={py(b.y)} stroke="#fff" strokeWidth={4} /><line x1={px(a.x)} y1={py(a.y)} x2={px(b.x)} y2={py(b.y)} stroke="#1c1b19" strokeWidth={1.4} /><text x={px((a.x + b.x) / 2) + 4} y={py((a.y + b.y) / 2) - 4} fontSize={fs - 1} fill="#1c1b19">G {g.widthFt}&apos;</text></g>); })}
+                <text x={px(cx)} y={py(cy) - 2} textAnchor="middle" fontSize={fs} fontWeight={600} fill="#1c1b19">{f.name}</text>
+                <text x={px(cx)} y={py(cy) + fs} textAnchor="middle" fontSize={fs - 1} fill="#4a4741">{Math.round(fenceLengthFt(f)).toLocaleString()}&apos; · {FENCE_PRESETS[f.kind].label} {formatFtIn(f.heightFt)}{area ? ` · ${formatArea(area)}` : ""}</text>
               </g>
             );
           })

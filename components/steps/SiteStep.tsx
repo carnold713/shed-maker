@@ -5,6 +5,7 @@ import { useProjectStore } from "@/lib/store/useProjectStore";
 import { useDerived } from "@/lib/store/useDerived";
 import { useViewStore } from "@/lib/store/useViewStore";
 import { runArea, runsForZone } from "@/lib/model/runs";
+import { fenceAreaSqFt, fenceLengthFt, formatArea } from "@/lib/model/fences";
 import { exteriorEdgesOf } from "@/lib/model/zones";
 import { deriveFencing } from "@/lib/site/fencing";
 import { formatLatLng, parseLatLng } from "@/lib/site/geo";
@@ -26,6 +27,8 @@ export function SiteStep() {
   const select = useProjectStore((s) => s.select);
   const setSite = useProjectStore((s) => s.setSite);
   const setTool = useViewStore((s) => s.setTool);
+  const tool = useViewStore((s) => s.tool);
+  const setSiteSurface = useViewStore((s) => s.setSiteSurface);
   const requestFit = useViewStore((s) => s.requestFit);
   const { report } = useDerived();
   const problems = new Set((report?.findings ?? []).filter((f) => f.severity !== "info").flatMap((f) => f.entityIds));
@@ -64,6 +67,7 @@ export function SiteStep() {
   function place(lat: number, lng: number) {
     setSite({ lat, lng });
     setHits([]);
+    setSiteSurface("map");
     requestFit();
   }
 
@@ -77,6 +81,7 @@ export function SiteStep() {
           <ToolRow>
             <ToolButton tool="select" icon="select" label="Select" keyHint="V" hint="Click a run to edit it · drag to move · handles to resize" testId="tool-select" />
             <ToolButton tool="run" icon="run" label="Run" keyHint="R" hint="Click beside an outside wall to add a fenced run there" testId="tool-run" />
+            <ToolButton tool="fence" icon="fence" label="Fence" keyHint="F" hint="Click corner by corner around any area; click the first corner again to close it" testId="tool-fence" />
             <ToolButton tool="erase" icon="erase" label="Remove" keyHint="E" hint="Click a run to remove it" testId="tool-erase" />
           </ToolRow>
           {pensWithout.length ? (
@@ -91,7 +96,11 @@ export function SiteStep() {
           ) : (
             <ItemList items={model.runs.map((r) => ({ id: r.id, label: r.name, detail: `${r.rect.w}' × ${r.rect.d}' · ${runArea(r).toLocaleString()} sq ft`, icon: "run", warn: problems.has(r.id) }))} />
           )}
-          {model.runs.length ? (
+          {model.fences.length ? (
+            <ItemList items={model.fences.map((f) => ({ id: f.id, label: f.name, detail: `${Math.round(fenceLengthFt(f)).toLocaleString()}' ${f.closed ? `· ${formatArea(fenceAreaSqFt(f))}` : "· open line"}`, icon: "fence", warn: problems.has(f.id) }))} />
+          ) : null}
+          {tool === "fence" ? <p className="text-[11px] leading-snug text-muted">Works on the plan and on the map: click each corner, click the first corner again to close a paddock, double-click or Enter to finish a line, Backspace to undo a corner.</p> : null}
+          {model.runs.length || model.fences.length ? (
             <p className="text-[11px] leading-snug text-muted" data-testid="fence-summary">
               {fencing.totalFenceFt}&apos; of fence, {fencing.totalPosts} posts, {fencing.gates.reduce((s, g) => s + g.count, 0)} gate{fencing.gates.reduce((s, g) => s + g.count, 0) === 1 ? "" : "s"}. The fence schedule and the site plan are in the blueprints.
             </p>
@@ -141,7 +150,7 @@ export function SiteStep() {
             {located ? "The map shows the barn and its runs to scale. To move the barn far, pan to the spot and right-click it (or press “Put the barn here” on the map and click). Drag the barn for small moves; drag the round handle to turn it. Scroll to zoom." : "No location yet: find your property, then click the map where the barn goes."}
           </p>
           <div className="flex flex-wrap gap-1">
-            <Button className="px-2 py-1 text-xs" onClick={() => setTool("run")}>Add a run</Button>
+            <Button className="px-2 py-1 text-xs" onClick={() => { setSiteSurface("map"); setTool("fence"); }}>Draw a fence on the map</Button>
             {located ? <Button className="px-2 py-1 text-xs" onClick={() => setSite({ lat: undefined, lng: undefined })} data-testid="site-clear">Clear location</Button> : null}
           </div>
         </Section>

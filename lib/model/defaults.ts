@@ -45,6 +45,7 @@ export function createDefaultModel(opts: { name?: string; wFt?: number; dFt?: nu
     },
     leanTos: [],
     runs: [],
+    fences: [],
     foundation: {
       kind: "embeddedPost",
       slab: { enabled: true, thicknessIn: 4, gravelBaseIn: 4, vaporBarrier: true, reinforcement: "mesh", zones: [], aprons: true, apronDepthFt: 8, aboveGradeIn: 6 },

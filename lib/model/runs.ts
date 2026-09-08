@@ -12,6 +12,7 @@ import { exteriorEdgesOf, zoneRect, type ExteriorEdge, type Rect } from "./zones
 import { SPECIES_PRESETS } from "@/rules/animals/presets";
 
 export type Side = "n" | "s" | "e" | "w";
+type Pt = { x: number; y: number };
 const SIDES: Side[] = ["n", "e", "s", "w"];
 
 function touch(model: BuildingModel): BuildingModel {
@@ -425,6 +426,51 @@ export function autoRuns(model: BuildingModel, ids?: string[]): BuildingModel {
   return m;
 }
 
+export interface RunGhost {
+  rect: Rect;
+  side: Side;
+  /** Clockwise wall coordinate under the pointer. */
+  u: number;
+  zoneId?: string;
+  label: string;
+  /** For the status line. */
+  hint: string;
+}
+
+/**
+ * What the Run tool would add for a pointer at plan point `p`: hung on the
+ * nearest outside wall, on the pen there (its width and animals) or a 24'
+ * frontage; the depth follows the pointer but never less than the animals need.
+ */
+export function runGhostAt(model: BuildingModel, p: Pt): RunGhost | null {
+  const fp = footprint(model);
+  if (!fp) return null;
+  const inside = p.x > 0 && p.x < fp.W && p.y > 0 && p.y < fp.D;
+  if (inside) return null;
+  // Nearest wall side by distance to the footprint edges.
+  const cands: { side: Side; dist: number; u: number }[] = [
+    { side: "s", dist: Math.abs(p.y), u: Math.max(0, Math.min(fp.W, p.x)) },
+    { side: "n", dist: Math.abs(p.y - fp.D), u: Math.max(0, Math.min(fp.W, fp.W - p.x)) },
+    { side: "w", dist: Math.abs(p.x), u: Math.max(0, Math.min(fp.D, fp.D - p.y)) },
+    { side: "e", dist: Math.abs(p.x - fp.W), u: Math.max(0, Math.min(fp.D, p.y)) },
+  ];
+  // Only walls whose span the pointer is beside count first; otherwise the nearest corner wall.
+  const beside = cands.filter((c) => (c.side === "s" || c.side === "n" ? p.x >= 0 && p.x <= fp.W : p.y >= 0 && p.y <= fp.D));
+  const hit = (beside.length ? beside : cands).sort((a, b) => a.dist - b.dist)[0];
+  const pen = penAtWall(model, hit.side, hit.u);
+  const species = pen?.species;
+  const head = pen?.headCount ?? 1;
+  const pr = pen ? zoneRect(pen) : null;
+  const width = pr ? (hit.side === "n" || hit.side === "s" ? pr.w : pr.d) : 24;
+  const depth = Math.max(defaultRunDepth(species, head, width), Math.min(120, Math.round(hit.dist)));
+  const u = pen ? (exteriorEdgesOf(model, pen).find((e) => e.side === hit.side)?.centerFt ?? hit.u) : hit.u;
+  const rect = runRectOnWall(model, hit.side, u, width, depth);
+  if (!rect) return null;
+  const animal = SPECIES_PRESETS[species ?? "generic"].label.toLowerCase().split(" /")[0];
+  const sideName = { n: "north", s: "south", e: "east", w: "west" }[hit.side];
+  return { rect, side: hit.side, u: hit.u, zoneId: pen?.id, label: pen ? `${pen.name} run` : "Run", hint: `Click to add a ${rect.w}' × ${rect.d}' run ${pen ? `off ${pen.name} for its ${animal}s` : `on the ${sideName} wall`} · ${runGuidanceFor(species).recSqFtPerHead} sq ft each recommended` };
+}
+
 /** Plan-space bounds of the barn plus its lean-tos and runs, for fitting views. */
 export function siteExtent(model: BuildingModel): Rect {
   const fp = footprint(model) ?? { W: 24, D: 36 };
@@ -441,5 +487,12 @@ export function siteExtent(model: BuildingModel): Rect {
     x1 = Math.max(x1, r.rect.x + r.rect.w);
     y1 = Math.max(y1, r.rect.y + r.rect.d);
   }
+  for (const f of model.fences)
+    for (const p of f.points) {
+      x0 = Math.min(x0, p.x);
+      y0 = Math.min(y0, p.y);
+      x1 = Math.max(x1, p.x);
+      y1 = Math.max(y1, p.y);
+    }
   return { x: x0, y: y0, w: x1 - x0, d: y1 - y0 };
 }

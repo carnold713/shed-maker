@@ -25,6 +25,8 @@ const PATHS: Record<string, string> = {
   site: "M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14",
   run: "M3 8h18M3 16h18M6 5v14M12 5v14M18 5v14",
   gate: "M4 5v14M20 5v14M4 8h16M4 12h16M4 16h16M12 8v8",
+  fence: "M4 20V8l2-3 2 3v12M11 20V8l2-3 2 3v12M18 20V8l2-3 2 3v12M4 11h16M4 16h16",
+  walk: "M13 4a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM9 21l2-7 2 2v5M13 9l3 2-1 4M9 12l2-4 3 1 1 3-3 4",
   erase: "M3 16l9-9 6 6-6 6H8zM14 19h7",
   light: "M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.6 1 1.5 1 2.5h6c0-1 .3-1.9 1-2.5A6 6 0 0 0 12 3z",
   outlet: "M5 4h14v16H5zM9.5 9v3M14.5 9v3M12 15h.01",

@@ -50,6 +50,8 @@ export function runFix(f: Finding) {
       return s.fitRunToHead(String(args.id));
     case "updateRun":
       return s.updateRun(String(args.id), (args.patch ?? {}) as Parameters<typeof s.updateRun>[1]);
+    case "addFenceGate":
+      return s.addFenceGate(String(args.id), { widthFt: args.widthFt ? Number(args.widthFt) : undefined });
     case "addRunGate":
       return s.addRunGate(String(args.runId), { widthFt: args.widthFt ? Number(args.widthFt) : undefined });
     case "nudgeOpeningClear": {

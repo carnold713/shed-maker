@@ -13,6 +13,7 @@ import * as dc from "@/lib/model/interiorDoors";
 import * as ec from "@/lib/model/electrical";
 import * as drc from "@/lib/model/drainage";
 import * as rc from "@/lib/model/runs";
+import * as fc from "@/lib/model/fences";
 
 import { newId } from "@/lib/model/ids";
 
@@ -74,6 +75,16 @@ export interface ProjectState {
   removeRunGate: (runId: string, gateId: string) => void;
   /** One run per pen on an outside wall that has none yet. Returns the ids added. */
   autoRuns: () => string[];
+  addFence: (input: fc.AddFenceInput) => string | null;
+  updateFence: (id: string, patch: Parameters<typeof fc.updateFence>[2]) => void;
+  moveFencePoint: (id: string, index: number, p: fc.Pt) => void;
+  insertFencePoint: (id: string, seg: number, p: fc.Pt) => void;
+  removeFencePoint: (id: string, index: number) => void;
+  moveFence: (id: string, dx: number, dy: number) => void;
+  removeFence: (id: string) => void;
+  addFenceGate: (id: string, input?: fc.AddFenceGateInput) => void;
+  updateFenceGate: (id: string, gateId: string, patch: Parameters<typeof fc.updateFenceGate>[3]) => void;
+  removeFenceGate: (id: string, gateId: string) => void;
   addLeanTo: (input: lc.AddLeanToInput) => string | null;
   updateLeanTo: (id: string, patch: Parameters<typeof lc.updateLeanTo>[2]) => void;
   removeLeanTo: (id: string) => void;
@@ -203,6 +214,23 @@ export const useProjectStore = create<ProjectState>()(
           apply((m) => rc.autoRuns(m));
           return (get().model?.runs ?? []).filter((r) => !before.has(r.id)).map((r) => r.id);
         },
+        addFence: (input) => {
+          const id = input.id ?? newId("fence");
+          apply((m) => fc.addFence(m, { ...input, id }));
+          return get().model?.fences.some((f) => f.id === id) ? id : null;
+        },
+        updateFence: (id, patch) => apply((m) => fc.updateFence(m, id, patch)),
+        moveFencePoint: (id, index, p) => apply((m) => fc.moveFencePoint(m, id, index, p)),
+        insertFencePoint: (id, seg, p) => apply((m) => fc.insertFencePoint(m, id, seg, p)),
+        removeFencePoint: (id, index) => apply((m) => fc.removeFencePoint(m, id, index)),
+        moveFence: (id, dx, dy) => apply((m) => fc.moveFence(m, id, dx, dy)),
+        removeFence: (id) => {
+          apply((m) => fc.removeFence(m, id));
+          if (get().selection === id) set({ selection: null });
+        },
+        addFenceGate: (id, input) => apply((m) => fc.addFenceGate(m, id, input)),
+        updateFenceGate: (id, gateId, patch) => apply((m) => fc.updateFenceGate(m, id, gateId, patch)),
+        removeFenceGate: (id, gateId) => apply((m) => fc.removeFenceGate(m, id, gateId)),
         addLeanTo: (input) => {
           const id = input.id ?? newId("lt");
           apply((m) => lc.addLeanTo(m, { ...input, id }));

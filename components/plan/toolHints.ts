@@ -4,6 +4,7 @@ import { SPECIES_PRESETS } from "@/rules/animals/presets";
 import { ZONE_TYPE_LABEL, defaultPenSize } from "@/lib/model/zones";
 import { DOOR_PALETTE, WINDOW_PALETTE } from "@/lib/model/openings";
 import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
+import { FENCE_TOOL_HINT } from "@/lib/site/fenceDraft";
 import { FIXTURE_PRESETS } from "@/lib/model/electrical";
 
 /** What a click will do with the armed tool — the status bar's centre line (UX audit §3.7). */
@@ -30,6 +31,8 @@ export function toolHint(vs: Pick<ViewState, "tool" | "toolSpecies" | "toolRoomT
     }
     case "leanTo":
       return "Click an outside wall to add a lean-to on that side · Esc to cancel";
+    case "fence":
+      return FENCE_TOOL_HINT;
     case "run":
       return "Click beside an outside wall to add a fenced run there · off a stall it takes the stall's animals · Esc to cancel";
     case "fixture": {

@@ -55,10 +55,12 @@ export const STEP_PLAN_PCT: Record<Step, number> = { project: 50, layout: 58, bu
 
 export type RenderMode = "realistic" | "white";
 
-export type PlanTool = "select" | "pen" | "aisle" | "room" | "door" | "window" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "run" | "erase";
+export type PlanTool = "select" | "pen" | "aisle" | "room" | "door" | "window" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "run" | "fence" | "erase";
 
 export interface ContextTarget {
-  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "drainOutlet" | "run";
+  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "drainOutlet" | "run" | "fence" | "fenceVertex";
+  /** For fence corners: which point. */
+  index?: number;
   /** Plan position under the cursor, feet (empty-space menus). */
   planX?: number;
   planY?: number;
@@ -92,6 +94,10 @@ export interface ViewState {
   toolFixtureKind: string;
   /** Drain tool: floor drain, trench drain, or the outlet. */
   toolDrainKind: "floor" | "trench" | "outlet";
+  /** Fence being drawn (plan feet), shared by the plan and the site map. */
+  fenceDraft: { x: number; y: number }[];
+  /** Which surface the Site step shows on the left: the plan or the satellite map. */
+  siteSurface: "plan" | "map";
   /** Orthographic isometric camera (game-like) instead of perspective. */
   isometric: boolean;
   /** Grow the building automatically when a zone lands outside it (SPEC §18.2 "Just do it"). */
@@ -122,6 +128,8 @@ export interface ViewState {
   setToolInteriorDoorType: (t: string) => void;
   setToolFixtureKind: (k: string) => void;
   setToolDrainKind: (k: "floor" | "trench" | "outlet") => void;
+  setFenceDraft: (pts: { x: number; y: number }[]) => void;
+  setSiteSurface: (s: "plan" | "map") => void;
   setStep: (s: Step) => void;
   setStageView: (v: StageView) => void;
   setStagePlanPct: (pct: number) => void;
@@ -145,6 +153,8 @@ export const useViewStore = create<ViewState>()((set) => ({
   toolInteriorDoorType: "stallSlide",
   toolFixtureKind: "light",
   toolDrainKind: "floor",
+  fenceDraft: [],
+  siteSurface: "plan",
   step: "layout",
   stageViews: { ...STEP_STAGE_VIEW },
   stagePlanPcts: { ...STEP_PLAN_PCT },
@@ -164,7 +174,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   openContextMenu: (contextMenu) => set({ contextMenu }),
   closeContextMenu: () => set({ contextMenu: null }),
   setHovered: (hovered) => set({ hovered }),
-  setTool: (tool) => set({ tool, hint: null }),
+  setTool: (tool) => set((s) => ({ tool, hint: null, fenceDraft: tool === "fence" ? s.fenceDraft : [] })),
   setToolSpecies: (toolSpecies) => set({ toolSpecies, tool: "pen", hint: null }),
   setToolRoomType: (toolRoomType) => set({ toolRoomType, tool: "room", hint: null }),
   setToolDoorKey: (toolDoorKey) => set({ toolDoorKey, tool: "door", hint: null }),
@@ -174,6 +184,8 @@ export const useViewStore = create<ViewState>()((set) => ({
   setToolInteriorDoorType: (toolInteriorDoorType) => set({ toolInteriorDoorType, tool: "interiorDoor", hint: null }),
   setToolFixtureKind: (toolFixtureKind) => set({ toolFixtureKind, tool: "fixture", hint: null }),
   setToolDrainKind: (toolDrainKind) => set({ toolDrainKind, tool: "drain", hint: null }),
+  setFenceDraft: (fenceDraft) => set({ fenceDraft }),
+  setSiteSurface: (siteSurface) => set({ siteSurface }),
   setStep: (step) =>
     set((s) => {
       const preset = STEP_PRESET[step];

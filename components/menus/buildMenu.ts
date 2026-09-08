@@ -17,6 +17,7 @@ import { FIXTURE_PRESETS, PLACEABLE_FIXTURE_KINDS, switchedLights } from "@/lib/
 import { PRESET_LABEL } from "@/lib/store/useViewStore";
 import { DRAIN_PRESETS, OUTLET_LABEL } from "@/lib/model/drainage";
 import { FENCE_KINDS, FENCE_PRESETS, runGuidanceFor } from "@/lib/model/runs";
+import { fenceSegmentAt } from "@/lib/model/fences";
 import type { DrainKind, DrainOutlet } from "@/lib/model/schema";
 
 /**
@@ -233,6 +234,30 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
         { separator: true, label: "" },
         { label: "Properties", onSelect: () => ps.select(run.id) },
         { label: "Delete", onSelect: () => ps.removeRun(run.id), danger: true, shortcut: "Del" },
+      ];
+    }
+    case "fence": {
+      const f = model.fences.find((x) => x.id === t.id);
+      if (!f) return [];
+      const hit = t.planX !== undefined && t.planY !== undefined ? fenceSegmentAt(model, { x: t.planX, y: t.planY }, 3) : null;
+      return [
+        ...(hit && hit.fence.id === f.id ? [{ label: "Add a corner here", onSelect: () => ps.insertFencePoint(f.id, hit.seg.i, hit.foot) }, { label: "Add a gate here", children: [4, 8, 12, 16].map((w) => ({ label: `${w}' gate`, onSelect: () => ps.addFenceGate(f.id, { seg: hit.seg.i, offsetFt: Math.max(0, hit.offsetFt - w / 2), widthFt: w }) })) }] : []),
+        { label: `${f.closed ? "✓ " : "   "}Closed all the way round`, onSelect: () => ps.updateFence(f.id, { closed: !f.closed }) },
+        { label: "Fence", children: FENCE_KINDS.map((k) => ({ label: `${f.kind === k ? "✓ " : "   "}${FENCE_PRESETS[k].label}`, onSelect: () => ps.updateFence(f.id, { kind: k, heightFt: FENCE_PRESETS[k].heightFt }) })) },
+        { label: "Fence height", children: [3, 4, 4.5, 5, 6].map((h) => ({ label: `${f.heightFt === h ? "✓ " : "   "}${h}'`, onSelect: () => ps.updateFence(f.id, { heightFt: h }) })) },
+        { label: "Add a gate", children: [4, 8, 12, 16].map((w) => ({ label: `${w}' ${w >= 12 ? "drive" : w === 4 ? "walk" : ""} gate`.replace("  ", " "), onSelect: () => ps.addFenceGate(f.id, { widthFt: w }) })) },
+        { separator: true, label: "" },
+        { label: "Properties", onSelect: () => ps.select(f.id) },
+        { label: "Delete", onSelect: () => ps.removeFence(f.id), danger: true, shortcut: "Del" },
+      ];
+    }
+    case "fenceVertex": {
+      const f = model.fences.find((x) => x.id === t.id);
+      if (!f || t.index === undefined) return [];
+      return [
+        { label: "Remove this corner", onSelect: () => ps.removeFencePoint(f.id, t.index!), danger: f.points.length <= 2 },
+        { separator: true, label: "" },
+        { label: "Properties", onSelect: () => ps.select(f.id) },
       ];
     }
     case "leanTo": {

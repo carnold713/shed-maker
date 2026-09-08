@@ -214,7 +214,7 @@ export function estimateMaterials(model: BuildingModel, framing: FramingSet, geo
   }
 
   // ---- Runs and fencing (materials only; the fence contractor's labour is separate)
-  if (model.runs.length > 0) {
+  if (model.runs.length > 0 || model.fences.length > 0) {
     const f = deriveFencing(model);
     for (const k of f.byKind) {
       const preset = FENCE_PRESETS[k.kind];

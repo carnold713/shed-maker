@@ -479,6 +479,29 @@ export const Run = z.object({
 });
 export type Run = z.infer<typeof Run>;
 
+export const FenceGate = z.object({
+  id: Id,
+  /** Which segment of the fence line the gate is in (0 = between points 0 and 1). */
+  seg: z.number().int().nonnegative(),
+  /** Near-post offset along that segment from its first point, feet. */
+  offsetFt: z.number().nonnegative(),
+  widthFt: z.number().positive().default(4),
+});
+export type FenceGate = z.infer<typeof FenceGate>;
+
+/** A free fence line drawn on the site: open (a lane, a boundary) or closed around a paddock. Plan feet. */
+export const Fence = z.object({
+  id: Id,
+  name: z.string().default("Fence"),
+  kind: FenceKind.default("noClimb"),
+  heightFt: z.number().positive().default(5),
+  topRail: z.boolean().default(false),
+  closed: z.boolean().default(false),
+  points: z.array(Pt).min(2),
+  gates: z.array(FenceGate).default([]),
+});
+export type Fence = z.infer<typeof Fence>;
+
 export const BuildingModel = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   units: Units.default("imperial"),
@@ -492,6 +515,7 @@ export const BuildingModel = z.object({
   roof: Roof.prefault({}),
   leanTos: z.array(LeanTo).default([]),
   runs: z.array(Run).default([]),
+  fences: z.array(Fence).default([]),
   foundation: Foundation.prefault({}),
   zones: z.array(Zone).default([]),
   fixtures: z.array(Fixture).default([]),

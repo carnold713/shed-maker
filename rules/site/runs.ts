@@ -115,4 +115,13 @@ export const runHasGate: Rule = {
     }),
 };
 
-export const RUN_RULES: Rule[] = [runOverlapsBuilding, runsOverlap, runSpace, runFenceHeight, runFenceKind, runPenDoor, runHasGate];
+export const fenceHasGate: Rule = {
+  id: "site.fence.gate",
+  title: "Paddock has a gate",
+  source: "Industry",
+  rationale: "A fence closed all the way round needs a gate wide enough for what goes in: 4' for people, 12' for a tractor or a spreader.",
+  applies: (m) => m.fences.some((f) => f.closed),
+  evaluate: (m) => m.fences.filter((f) => f.closed && f.gates.length === 0).map((f) => ({ severity: "info" as const, rule: "site.fence.gate", message: `${f.name} is closed all the way round with no gate.`, entityIds: [f.id], fix: { label: "Add a 12' gate", command: "addFenceGate", args: { id: f.id, widthFt: 12 } } })),
+};
+
+export const RUN_RULES: Rule[] = [runOverlapsBuilding, runsOverlap, runSpace, runFenceHeight, runFenceKind, runPenDoor, runHasGate, fenceHasGate];

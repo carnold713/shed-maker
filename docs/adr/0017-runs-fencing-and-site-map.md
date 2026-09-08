@@ -30,6 +30,10 @@ Tiles come through `/api/tiles/{z}/{x}/{y}` and address lookups through `/api/ge
 - Without a key, tiles are Esri World Imagery (free with attribution, native zoom ~19) and geocoding is OpenStreetMap Nominatim (with a proper User-Agent, ≤ 1 request/s). The app works out of the box; the owner adds the key when he wants Google's imagery.
 - Tiles are cached for a day at the edge; the session token is cached in the server process.
 
+## Addendum 2026-09-08 — free fence lines
+
+Runs are rectangles hung on the barn; the owner also wants to "build a fence around certain areas outside" to see the whole layout. `model.fences[]` is a polyline in plan feet (`Fence { points, closed, kind, heightFt, topRail, gates[{seg, offsetFt, widthFt}] }`), open (a lane, a boundary) or closed around a paddock. The Fence tool works on the plan and on the satellite map alike: click each corner (snapping to the half foot and to nearby corners of the barn, runs and other fences), click the first corner again to close, double-click / Enter / right-click to finish an open line, Backspace to undo a corner, Esc to cancel; the draft lives in the view store so both surfaces share it. Corners drag on both surfaces; right-click a corner to remove it, right-click the line to add one or a gate there. The takeoff treats every corner as a post and runs line posts along each straight; enclosed area is reported in acres. 3D draws posts, panels and gates along each segment at its angle. The Site step's left pane switches between Plan and Map (`siteSurface`), and switches to the map when a location is set.
+
 ## Consequences
 - Runs are the first model objects outside the footprint; everything that fits a view now uses `siteExtent` (plan) or the projected bounds (map). The pack's site plan includes them; printed sheets do not include the satellite image (tile terms and print reliability), only the plan, north arrow, coordinates and orientation.
 - Small-area equirectangular projection in `lib/site/geo.ts` is exact enough for a barn (< 1" at 1,000').
