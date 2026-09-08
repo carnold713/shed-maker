@@ -441,6 +441,44 @@ export const Meta = z.object({
   updatedAt: z.string(),
 });
 
+// ---------------------------------------------------------------------------
+// Outdoor runs (SPEC §26): fenced ground attached to the barn, one per pen or
+// free-standing, sized per head; fencing and gates derived in lib/site.
+// ---------------------------------------------------------------------------
+
+export const FenceKind = z.enum(["noClimb", "wovenWire", "board", "electric", "pipePanel", "chainLink", "hogPanel", "poultryNet"]);
+export type FenceKind = z.infer<typeof FenceKind>;
+
+export const RunGate = z.object({
+  id: Id,
+  side: z.enum(["n", "s", "e", "w"]),
+  /** Near-post offset along that side from its west / south end, feet. */
+  offsetFt: z.number().nonnegative(),
+  widthFt: z.number().positive().default(4),
+});
+export type RunGate = z.infer<typeof RunGate>;
+
+export const Run = z.object({
+  id: Id,
+  name: z.string().default("Run"),
+  species: Species.optional(),
+  /** Pen this run serves (its outside door opens into the run). */
+  zoneId: Id.optional(),
+  headCount: z.number().int().positive().default(1),
+  /** Plan rectangle in feet; usually outside the footprint, touching a wall. */
+  rect: z.object({ x: z.number(), y: z.number(), w: z.number().positive(), d: z.number().positive() }),
+  fence: z
+    .object({
+      kind: FenceKind.default("noClimb"),
+      heightFt: z.number().positive().default(5),
+      /** A 2×6 top rail on wire fences (sight line for horses, stiffens the mesh). */
+      topRail: z.boolean().default(false),
+    })
+    .prefault({}),
+  gates: z.array(RunGate).default([]),
+});
+export type Run = z.infer<typeof Run>;
+
 export const BuildingModel = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   units: Units.default("imperial"),
@@ -453,6 +491,7 @@ export const BuildingModel = z.object({
   openings: z.array(Opening).default([]),
   roof: Roof.prefault({}),
   leanTos: z.array(LeanTo).default([]),
+  runs: z.array(Run).default([]),
   foundation: Foundation.prefault({}),
   zones: z.array(Zone).default([]),
   fixtures: z.array(Fixture).default([]),

@@ -9,6 +9,7 @@ import { leanToClearance, leanToRafterSpan } from "./design/leanTos";
 import { interiorDoorWidth, zoneHasDoor } from "./design/interiorDoors";
 import { ELECTRICAL_RULES } from "./mep/electrical";
 import { DRAINAGE_RULES } from "./mep/drainage";
+import { RUN_RULES } from "./site/runs";
 
 export * from "./types";
 
@@ -33,6 +34,7 @@ export const RULES: Rule[] = [
   zoneHasDoor,
   ...ELECTRICAL_RULES,
   ...DRAINAGE_RULES,
+  ...RUN_RULES,
   footprintModule,
 ];
 

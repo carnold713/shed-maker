@@ -16,6 +16,7 @@ import { INTERIOR_DOOR_PRESETS, INTERIOR_DOOR_TYPES, endDoorsLabel, findInterior
 import { FIXTURE_PRESETS, PLACEABLE_FIXTURE_KINDS, switchedLights } from "@/lib/model/electrical";
 import { PRESET_LABEL } from "@/lib/store/useViewStore";
 import { DRAIN_PRESETS, OUTLET_LABEL } from "@/lib/model/drainage";
+import { FENCE_KINDS, FENCE_PRESETS, runGuidanceFor } from "@/lib/model/runs";
 import type { DrainKind, DrainOutlet } from "@/lib/model/schema";
 
 /**
@@ -217,6 +218,21 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
         { separator: true, label: "" },
         { label: "Properties", onSelect: () => ps.select(z.id) },
         { label: "Delete", onSelect: () => ps.removeZone(z.id), danger: true, shortcut: "Del" },
+      ];
+    }
+    case "run": {
+      const run = model.runs.find((r) => r.id === t.id);
+      if (!run) return [];
+      const g = runGuidanceFor(run.species);
+      return [
+        { label: "Animal", children: PEN_SPECIES.map((sp) => ({ label: `${run.species === sp ? "✓ " : "   "}${SPECIES_PRESETS[sp].label}`, onSelect: () => ps.updateRun(run.id, { species: sp }) })) },
+        { label: "Fence", children: FENCE_KINDS.map((k) => ({ label: `${run.fence.kind === k ? "✓ " : "   "}${FENCE_PRESETS[k].label}${k === g.fence ? " (usual)" : ""}`, onSelect: () => ps.updateRun(run.id, { fence: { kind: k, heightFt: FENCE_PRESETS[k].heightFt } }) })) },
+        { label: "Fence height", children: [3, 4, 4.5, 5, 6].map((h) => ({ label: `${run.fence.heightFt === h ? "✓ " : "   "}${h}'`, onSelect: () => ps.updateRun(run.id, { fence: { heightFt: h } }) })) },
+        { label: "Add a gate", children: [4, 8, 12, 16].map((w) => ({ label: `${w}' ${w >= 12 ? "drive" : w === 4 ? "walk" : ""} gate`.replace("  ", " "), onSelect: () => ps.addRunGate(run.id, { widthFt: w }) })) },
+        { label: `Grow to ${g.recSqFtPerHead * run.headCount} sq ft (${run.headCount} ${run.headCount === 1 ? "animal" : "animals"})`, onSelect: () => ps.fitRunToHead(run.id) },
+        { separator: true, label: "" },
+        { label: "Properties", onSelect: () => ps.select(run.id) },
+        { label: "Delete", onSelect: () => ps.removeRun(run.id), danger: true, shortcut: "Del" },
       ];
     }
     case "leanTo": {

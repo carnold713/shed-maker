@@ -5,7 +5,7 @@ import type { Layer } from "@/lib/framing/types";
 
 export type ViewPreset = "exterior" | "noRoof" | "framing" | "interior" | "plan";
 
-export const ALL_LAYERS: Layer[] = ["slab", "foundation", "framing", "roofStructure", "roofing", "siding", "openings", "interior", "electrical", "drainage"];
+export const ALL_LAYERS: Layer[] = ["slab", "foundation", "framing", "roofStructure", "roofing", "siding", "openings", "interior", "electrical", "drainage", "site"];
 
 export const LAYER_LABEL: Record<Layer, string> = {
   slab: "Slab",
@@ -18,45 +18,47 @@ export const LAYER_LABEL: Record<Layer, string> = {
   interior: "Stalls & rooms",
   electrical: "Electrical",
   drainage: "Drains",
+  site: "Runs & fences",
 };
 
 const PRESET_LAYERS: Record<ViewPreset, Layer[]> = {
-  exterior: ["slab", "roofing", "roofStructure", "siding", "openings", "interior", "electrical", "drainage"],
-  noRoof: ["slab", "framing", "siding", "openings", "interior", "electrical", "drainage"],
-  framing: ["slab", "foundation", "framing", "interior", "electrical", "drainage"],
-  interior: ["slab", "framing", "roofStructure", "siding", "openings", "interior", "electrical", "drainage"],
-  plan: ["slab", "framing", "siding", "openings", "interior", "electrical", "drainage"],
+  exterior: ["slab", "roofing", "roofStructure", "siding", "openings", "interior", "electrical", "drainage", "site"],
+  noRoof: ["slab", "framing", "siding", "openings", "interior", "electrical", "drainage", "site"],
+  framing: ["slab", "foundation", "framing", "interior", "electrical", "drainage", "site"],
+  interior: ["slab", "framing", "roofStructure", "siding", "openings", "interior", "electrical", "drainage", "site"],
+  plan: ["slab", "framing", "siding", "openings", "interior", "electrical", "drainage", "site"],
 };
 
 /** Plain-English names for the 3D presets (UX audit §4). */
 export const PRESET_LABEL: Record<ViewPreset, string> = { exterior: "Outside", noRoof: "Roof off", framing: "Framing", interior: "Inside", plan: "Plan" };
 
 /** Editor steps (ADR-0012): the rail walks through them; each shows one dock panel and its own tools. */
-export type Step = "project" | "layout" | "building" | "outside" | "electrical" | "check" | "plans";
+export type Step = "project" | "layout" | "building" | "outside" | "site" | "electrical" | "check" | "plans";
 export const STEPS: { id: Step; label: string; hint: string }[] = [
   { id: "project", label: "Project", hint: "Name, animals, site" },
   { id: "layout", label: "Layout", hint: "Stalls, aisle, rooms, doors" },
   { id: "building", label: "Building", hint: "Size, height, roof, frame" },
   { id: "outside", label: "Outside", hint: "Doors, windows, lean-tos, concrete" },
+  { id: "site", label: "Site", hint: "Runs, fences, the barn on your land" },
   { id: "electrical", label: "Electrical", hint: "Lights, outlets, panel" },
   { id: "check", label: "Check", hint: "Problems and fixes" },
   { id: "plans", label: "Plans", hint: "Blueprints, materials, cost" },
 ];
 /** 3D preset that best shows each step's work. */
-const STEP_PRESET: Partial<Record<Step, ViewPreset>> = { layout: "framing", building: "exterior", outside: "noRoof", electrical: "noRoof", check: "exterior" };
+const STEP_PRESET: Partial<Record<Step, ViewPreset>> = { layout: "framing", building: "exterior", outside: "noRoof", site: "exterior", electrical: "noRoof", check: "exterior" };
 
 export type StageView = "plan" | "both" | "3d";
 /** Default stage split per step (UX audit §2.2); the user's choice sticks per step. */
-export const STEP_STAGE_VIEW: Record<Step, StageView> = { project: "3d", layout: "both", building: "both", outside: "both", electrical: "both", check: "both", plans: "3d" };
+export const STEP_STAGE_VIEW: Record<Step, StageView> = { project: "3d", layout: "both", building: "both", outside: "both", site: "both", electrical: "both", check: "both", plans: "3d" };
 /** Plan share of the stage in "both", per step. */
-export const STEP_PLAN_PCT: Record<Step, number> = { project: 50, layout: 58, building: 42, outside: 50, electrical: 58, check: 50, plans: 50 };
+export const STEP_PLAN_PCT: Record<Step, number> = { project: 50, layout: 58, building: 42, outside: 50, site: 58, electrical: 58, check: 50, plans: 50 };
 
 export type RenderMode = "realistic" | "white";
 
-export type PlanTool = "select" | "pen" | "aisle" | "room" | "door" | "window" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "erase";
+export type PlanTool = "select" | "pen" | "aisle" | "room" | "door" | "window" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "run" | "erase";
 
 export interface ContextTarget {
-  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "drainOutlet";
+  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "drainOutlet" | "run";
   /** Plan position under the cursor, feet (empty-space menus). */
   planX?: number;
   planY?: number;

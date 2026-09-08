@@ -46,6 +46,12 @@ export function runFix(f: Finding) {
       return s.autoOutlet();
     case "setOutletKind":
       return s.setOutlet({ kind: args.kind as "dryWell" });
+    case "fitRunToHead":
+      return s.fitRunToHead(String(args.id));
+    case "updateRun":
+      return s.updateRun(String(args.id), (args.patch ?? {}) as Parameters<typeof s.updateRun>[1]);
+    case "addRunGate":
+      return s.addRunGate(String(args.runId), { widthFt: args.widthFt ? Number(args.widthFt) : undefined });
     case "nudgeOpeningClear": {
       const id = String(args.id);
       const clear = Number(args.clearanceFt ?? 1);

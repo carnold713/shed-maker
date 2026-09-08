@@ -11,10 +11,11 @@ import { needsApron } from "@/lib/model/openings";
 import { formatFtIn } from "@/lib/units";
 import { FixtureLayer } from "@/components/plan/FixtureLayer";
 import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
+import { FENCE_PRESETS, runEdges } from "@/lib/model/runs";
 import { DrainLayer } from "@/components/plan/DrainLayer";
 import type { DrainageDerived } from "@/lib/plumbing/drainage";
 
-export type PlanMode = "floor" | "foundation" | "roof" | "electrical" | "drainage";
+export type PlanMode = "floor" | "foundation" | "roof" | "electrical" | "drainage" | "site";
 
 /** Grid bubbles from the post lines: numbers along the ridge, letters across. */
 export function gridLines(model: BuildingModel, framing: FramingSet): { xs: { x: number; label: string }[]; ys: { y: number; label: string }[] } {
@@ -57,6 +58,13 @@ export function PlanSheet({ model, framing, partitions, electrical, drainage, mo
     maxX = Math.max(maxX, p.x);
     maxY = Math.max(maxY, p.y);
   }
+  if (mode === "site")
+    for (const r of model.runs) {
+      minX = Math.min(minX, r.rect.x);
+      minY = Math.min(minY, r.rect.y);
+      maxX = Math.max(maxX, r.rect.x + r.rect.w);
+      maxY = Math.max(maxY, r.rect.y + r.rect.d);
+    }
   const margin = 66;
   const scale = Math.min((widthPx - 2 * margin) / (maxX - minX), (heightPx - 2 * margin) / (maxY - minY));
   const ox = margin + ((widthPx - 2 * margin) - (maxX - minX) * scale) / 2 - minX * scale;
@@ -124,6 +132,40 @@ export function PlanSheet({ model, framing, partitions, electrical, drainage, mo
       ) : null}
 
       {/* lean-to outlines */}
+      {/* site plan: runs, fences and gates outside the walls */}
+      {mode === "site"
+        ? model.runs.map((r) => {
+            const edges = runEdges(model, r);
+            return (
+              <g key={r.id} data-testid="sheet-run">
+                <rect x={px(r.rect.x)} y={py(r.rect.y + r.rect.d)} width={r.rect.w * scale} height={r.rect.d * scale} fill="#eef3e6" stroke="none" />
+                {edges.map((e) => (e.onBuilding ? null : <line key={e.side} x1={px(e.x0)} y1={py(e.y0)} x2={px(e.x1)} y2={py(e.y1)} stroke="#1c1b19" strokeWidth={1} strokeDasharray="5 2 1 2" />))}
+                {r.gates.map((g) => {
+                  const horizontal = g.side === "n" || g.side === "s";
+                  const x0 = horizontal ? r.rect.x + g.offsetFt : g.side === "w" ? r.rect.x : r.rect.x + r.rect.w;
+                  const y0 = horizontal ? (g.side === "s" ? r.rect.y : r.rect.y + r.rect.d) : r.rect.y + g.offsetFt;
+                  const x1 = horizontal ? x0 + g.widthFt : x0;
+                  const y1 = horizontal ? y0 : y0 + g.widthFt;
+                  return (
+                    <g key={g.id}>
+                      <line x1={px(x0)} y1={py(y0)} x2={px(x1)} y2={py(y1)} stroke="#fff" strokeWidth={4} />
+                      <line x1={px(x0)} y1={py(y0)} x2={px(x1)} y2={py(y1)} stroke="#1c1b19" strokeWidth={1.4} />
+                      <text x={px((x0 + x1) / 2) + (horizontal ? 0 : 6)} y={py((y0 + y1) / 2) + (horizontal ? (g.side === "s" ? 10 : -4) : 3)} textAnchor={horizontal ? "middle" : "start"} fontSize={fs - 1} fill="#1c1b19">
+                        G {g.widthFt}&apos;
+                      </text>
+                    </g>
+                  );
+                })}
+                <text x={px(r.rect.x + r.rect.w / 2)} y={py(r.rect.y + r.rect.d / 2) - 2} textAnchor="middle" fontSize={fs} fontWeight={600} fill="#1c1b19">
+                  {r.name}
+                </text>
+                <text x={px(r.rect.x + r.rect.w / 2)} y={py(r.rect.y + r.rect.d / 2) + fs} textAnchor="middle" fontSize={fs - 1} fill="#4a4741">
+                  {formatFtIn(r.rect.w)} × {formatFtIn(r.rect.d)} · {FENCE_PRESETS[r.fence.kind].label} {formatFtIn(r.fence.heightFt)}
+                </text>
+              </g>
+            );
+          })
+        : null}
       {model.leanTos.map((lt) => (
         <g key={lt.id}>
           <polygon points={leanToPolygon(model, lt).map((p) => `${px(p.x)},${py(p.y)}`).join(" ")} fill="none" stroke="#4a4741" strokeWidth={1} strokeDasharray={lt.enclosed ? undefined : "6 3"} />

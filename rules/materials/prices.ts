@@ -14,7 +14,7 @@ export interface PriceItem {
   source: "placeholder";
 }
 
-export type PriceCategory = "lumber" | "posts" | "trusses" | "roofSteel" | "siding" | "trim" | "concrete" | "hardware" | "doors" | "windows" | "interior" | "electrical" | "plumbing";
+export type PriceCategory = "lumber" | "posts" | "trusses" | "roofSteel" | "siding" | "trim" | "concrete" | "hardware" | "doors" | "windows" | "interior" | "electrical" | "plumbing" | "fencing";
 
 export const PRICE_CATEGORY_LABEL: Record<PriceCategory, string> = {
   lumber: "Framing lumber",
@@ -30,6 +30,7 @@ export const PRICE_CATEGORY_LABEL: Record<PriceCategory, string> = {
   interior: "Stall fronts & partitions",
   electrical: "Electrical",
   plumbing: "Drains & pipe",
+  fencing: "Runs & fencing",
 };
 
 export const PRICES: PriceItem[] = [
@@ -109,6 +110,29 @@ export const PRICES: PriceItem[] = [
   { sku: "hw.strapHinge", description: "Heavy strap hinge, 12\"", unit: "each", unitCost: 14, category: "interior", source: "placeholder" },
   { sku: "hw.holdBack", description: "Door hold-back hook", unit: "each", unitCost: 6, category: "interior", source: "placeholder" },
   { sku: "hw.lockset", description: "Lockset / passage set", unit: "each", unitCost: 35, category: "hardware", source: "placeholder" },
+  // Runs and fencing (docs/research/runs-and-fencing.md §6; national placeholders)
+  { sku: "fence.noClimb.roll", description: "No-climb 2×4 woven wire, 100' roll × 5'", unit: "each", unitCost: 260, category: "fencing", source: "placeholder" },
+  { sku: "fence.woven.roll", description: "Field fence (woven wire), 330' roll × 4'", unit: "each", unitCost: 270, category: "fencing", source: "placeholder" },
+  { sku: "fence.board.16", description: "2×6×16' treated fence board", unit: "each", unitCost: 24, category: "fencing", source: "placeholder" },
+  { sku: "fence.htWire.coil", description: "12.5 ga high-tensile wire, 4,000' coil", unit: "each", unitCost: 150, category: "fencing", source: "placeholder" },
+  { sku: "fence.insulator", description: "Wood-post insulator", unit: "each", unitCost: 0.6, category: "fencing", source: "placeholder" },
+  { sku: "fence.charger", description: "Fence charger, 5-mile, with ground rods", unit: "each", unitCost: 260, category: "fencing", source: "placeholder" },
+  { sku: "fence.pipePanel", description: "Continuous steel fence panel, 20' × 5'", unit: "each", unitCost: 190, category: "fencing", source: "placeholder" },
+  { sku: "fence.chainLink.roll", description: "Chain link fabric, 50' roll × 6', with top rail and ties", unit: "each", unitCost: 140, category: "fencing", source: "placeholder" },
+  { sku: "fence.hogPanel", description: "Hog / cattle panel, 16' × 4'", unit: "each", unitCost: 48, category: "fencing", source: "placeholder" },
+  { sku: "fence.poultry.roll", description: "½\" hardware cloth, 100' roll × 6'", unit: "each", unitCost: 200, category: "fencing", source: "placeholder" },
+  { sku: "fence.post.line", description: "4\" round treated line post, 8'", unit: "each", unitCost: 15, category: "fencing", source: "placeholder" },
+  { sku: "fence.post.corner", description: "6\" round treated corner / gate post, 9'", unit: "each", unitCost: 32, category: "fencing", source: "placeholder" },
+  { sku: "fence.brace", description: "H-brace assembly (brace post, rail, wire, pins)", unit: "each", unitCost: 45, category: "fencing", source: "placeholder" },
+  { sku: "fence.staples", description: "Fence staples and clips, per 100' of fence", unit: "each", unitCost: 9, category: "fencing", source: "placeholder" },
+  { sku: "fence.concrete.bag", description: "80 lb concrete bag (corner and gate posts)", unit: "each", unitCost: 7, category: "fencing", source: "placeholder" },
+  { sku: "gate.4", description: "4' tube walk gate with hinges and latch", unit: "each", unitCost: 120, category: "fencing", source: "placeholder" },
+  { sku: "gate.6", description: "6' tube gate with hinges and latch", unit: "each", unitCost: 140, category: "fencing", source: "placeholder" },
+  { sku: "gate.8", description: "8' tube gate with hinges and latch", unit: "each", unitCost: 165, category: "fencing", source: "placeholder" },
+  { sku: "gate.10", description: "10' tube gate with hinges and latch", unit: "each", unitCost: 190, category: "fencing", source: "placeholder" },
+  { sku: "gate.12", description: "12' tube gate with hinges and latch", unit: "each", unitCost: 215, category: "fencing", source: "placeholder" },
+  { sku: "gate.14", description: "14' tube gate with hinges and latch", unit: "each", unitCost: 245, category: "fencing", source: "placeholder" },
+  { sku: "gate.16", description: "16' tube gate with hinges and latch", unit: "each", unitCost: 275, category: "fencing", source: "placeholder" },
   // Electrical (docs/research/electrical-planning.md §9)
   { sku: "elec.panel", description: "Main-breaker sub-panel, 100 A, 20 spaces, NEMA 1", unit: "each", unitCost: 180, category: "electrical", source: "placeholder" },
   { sku: "elec.breaker1", description: "Single-pole breaker", unit: "each", unitCost: 12, category: "electrical", source: "placeholder" },

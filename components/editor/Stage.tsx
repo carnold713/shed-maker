@@ -5,6 +5,12 @@ import { useRef } from "react";
 import { selectStageView, STEP_PLAN_PCT, useViewStore } from "@/lib/store/useViewStore";
 import { PlanView } from "@/components/plan/PlanView";
 
+// Leaflet touches `window` at import time, so the map is client-only too.
+const SiteMap = dynamic(() => import("@/components/site/SiteMap").then((m) => m.SiteMap), {
+  ssr: false,
+  loading: () => <div className="flex h-full items-center justify-center text-sm text-muted">Loading map…</div>,
+});
+
 // The 3D bundle stays out of the initial route (SPEC §12).
 const Viewer = dynamic(() => import("@/components/scene/Viewer").then((m) => m.Viewer), {
   ssr: false,
@@ -40,7 +46,7 @@ export function Stage() {
     <div ref={ref} className="relative flex min-w-0 flex-1 bg-[#f3f0ea]" data-testid="stage" data-plan-pct={view === "both" ? Math.round(planPct) : undefined}>
       {view !== "3d" ? (
         <div className="relative min-w-0" style={{ width: view === "both" ? `calc(${planPct}% - 4px)` : "100%" }}>
-          <PlanView />
+          {step === "site" ? <SiteMap /> : <PlanView />}
         </div>
       ) : null}
       {view === "both" ? (

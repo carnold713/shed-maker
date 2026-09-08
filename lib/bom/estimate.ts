@@ -12,6 +12,8 @@ import { PRICE_CATEGORY_LABEL, unitCost, type PriceCategory } from "@/rules/mate
 import { hardwareSchedule } from "./hardware";
 import { interiorDoors } from "@/lib/interior/partitions";
 import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
+import { deriveFencing } from "@/lib/site/fencing";
+import { FENCE_PRESETS } from "@/lib/model/runs";
 import { deriveElectrical } from "@/lib/electrical/derive";
 import { FIXTURE_PRESETS } from "@/lib/model/electrical";
 import { deriveDrainage } from "@/lib/plumbing/drainage";
@@ -209,6 +211,29 @@ export function estimateMaterials(model: BuildingModel, framing: FramingSet, geo
     add("plumbing", "pipe.cleanout", "Cleanouts", dd.cleanouts.length, "each");
     if (dd.outlet?.kind === "daylight") add("plumbing", "drain.daylightEnd", "Daylight outlet end", 1, "each");
     if (dd.outlet?.kind === "dryWell") add("plumbing", "drain.dryWell", "Dry well", 1, "each");
+  }
+
+  // ---- Runs and fencing (materials only; the fence contractor's labour is separate)
+  if (model.runs.length > 0) {
+    const f = deriveFencing(model);
+    for (const k of f.byKind) {
+      const preset = FENCE_PRESETS[k.kind];
+      if (preset.material === "roll") add("fencing", k.sku, `${preset.label} (${k.fenceFt}' of fence)`, k.rolls, "each");
+      if (preset.material === "board") add("fencing", k.sku, `${preset.label} boards (${k.fenceFt}' of fence)`, k.boards, "each");
+      if (preset.material === "panel") add("fencing", k.sku, `${preset.label} panels (${k.fenceFt}' of fence)`, k.panels, "each");
+      if (preset.material === "strand") {
+        add("fencing", k.sku, `${preset.label} (${k.strandFt}' of strand)`, Math.ceil(k.strandFt / 4000), "each");
+        add("fencing", "fence.insulator", "Insulators", k.insulators, "each");
+      }
+      add("fencing", "fence.post.line", `Line posts, ${preset.postSpacingFt}' on centre`, k.linePosts, "each");
+      add("fencing", "fence.post.corner", "Corner and gate posts", k.cornerPosts + k.gatePosts, "each");
+      if (k.braces) add("fencing", "fence.brace", "H-brace assemblies at corners and gates", k.braces, "each");
+      if (k.topRailBoards) add("fencing", "fence.board.16", "2×6×16' top rail", k.topRailBoards, "each");
+      add("fencing", "fence.staples", "Staples and clips", Math.ceil(k.fenceFt / 100), "each");
+      add("fencing", "fence.concrete.bag", "Concrete for corner and gate posts", k.concreteBags, "each");
+    }
+    for (const g of f.gates) add("fencing", `gate.${g.widthFt}`, `${g.widthFt}' tube gates`, g.count, "each");
+    if (f.chargers) add("fencing", "fence.charger", "Fence charger", f.chargers, "each");
   }
 
   // ---- Totals

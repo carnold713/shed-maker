@@ -19,6 +19,9 @@ import { FIXTURE_PRESETS } from "@/lib/model/electrical";
 import { deriveElectrical } from "@/lib/electrical/derive";
 import { deriveDrainage } from "@/lib/plumbing/drainage";
 import { DrainLayer } from "./DrainLayer";
+import { RunLayer } from "./RunLayer";
+import { penAtWall, runRectOnWall, siteExtent, defaultRunDepth, runGuidanceFor, FENCE_PRESETS } from "@/lib/model/runs";
+import { exteriorEdgesOf } from "@/lib/model/zones";
 import { DRAIN_PRESETS, OUTLET_ID, zoneAt } from "@/lib/model/drainage";
 
 /**
@@ -59,6 +62,7 @@ export function PlanView() {
   const removeFixture = useProjectStore((s) => s.removeFixture);
   const moveFixture = useProjectStore((s) => s.moveFixture);
   const [wallGhost, setWallGhost] = useState<{ wallId: string; u: number; w: number; spec?: ExteriorDoorSpec } | null>(null);
+  const [runGhost, setRunGhost] = useState<{ rect: Rect; side: "n" | "s" | "e" | "w"; u: number; zoneId?: string; label: string } | null>(null);
   const [doorGhost, setDoorGhost] = useState<{ partition: Partition; u: number; w: number; zoneId: string; side: "n" | "s" | "e" | "w"; offsetFt: number; type: InteriorDoorType } | null>(null);
   const doorToolOn = tool === "interiorDoor" || tool === "door";
   const [fixtureGhost, setFixtureGhost] = useState<{ x: number; y: number; onWall: boolean } | null>(null);
@@ -67,6 +71,10 @@ export function PlanView() {
   const addDrain = useProjectStore((s) => s.addDrain);
   const removeDrain = useProjectStore((s) => s.removeDrain);
   const moveDrain = useProjectStore((s) => s.moveDrain);
+  const addRun = useProjectStore((s) => s.addRun);
+  const moveRun = useProjectStore((s) => s.moveRun);
+  const resizeRun = useProjectStore((s) => s.resizeRun);
+  const removeRun = useProjectStore((s) => s.removeRun);
   const setOutlet = useProjectStore((s) => s.setOutlet);
   const removeOutlet = useProjectStore((s) => s.removeOutlet);
   const drainage = useMemo(() => (model && model.drainage.drains.length ? deriveDrainage(model) : null), [model]);
@@ -99,10 +107,12 @@ export function PlanView() {
   const D = fp?.kind === "rect" ? fp.dFt : 0;
 
   const margin = 64;
+  // Fit the barn with its lean-tos and runs (plan feet; runs sit outside the footprint).
+  const ext = useMemo(() => (model && fp?.kind === "rect" ? siteExtent(model) : { x: 0, y: 0, w: W || 24, d: D || 36 }), [model, fp, W, D]);
   const baseScale = useMemo(() => {
-    if (!W || !D) return 10;
-    return Math.max(0.5, Math.min((size.w - 2 * margin) / W, (size.h - 2 * margin) / D));
-  }, [W, D, size]);
+    if (!ext.w || !ext.d) return 10;
+    return Math.max(0.5, Math.min((size.w - 2 * margin) / ext.w, (size.h - 2 * margin) / ext.d));
+  }, [ext, size]);
   // Zoom (1 = fit) and pan (px) on top of the fitted view; F / Fit resets both.
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -112,10 +122,10 @@ export function PlanView() {
     setPan({ x: 0, y: 0 });
   }, [fitNonce]);
   const scale = baseScale * zoom;
-  const ox = (size.w - W * scale) / 2 + pan.x;
-  const oy = (size.h + D * scale) / 2 + pan.y;
-  const navRef = useRef({ zoom, pan, size, W, D, baseScale });
-  navRef.current = { zoom, pan, size, W, D, baseScale };
+  const ox = (size.w - ext.w * scale) / 2 - ext.x * scale + pan.x;
+  const oy = (size.h + ext.d * scale) / 2 + ext.y * scale + pan.y;
+  const navRef = useRef({ zoom, pan, size, ext, baseScale });
+  navRef.current = { zoom, pan, size, ext, baseScale };
   /** Zoom by a factor about a wrapper-relative pixel, keeping the plan point under it fixed. */
   const zoomAt = useCallback((cx: number, cy: number, factor: number) => {
     const n = navRef.current;
@@ -123,12 +133,12 @@ export function PlanView() {
     if (z1 === n.zoom) return;
     const s0 = n.baseScale * n.zoom;
     const s1 = n.baseScale * z1;
-    const ox0 = (n.size.w - n.W * s0) / 2 + n.pan.x;
-    const oy0 = (n.size.h + n.D * s0) / 2 + n.pan.y;
+    const ox0 = (n.size.w - n.ext.w * s0) / 2 - n.ext.x * s0 + n.pan.x;
+    const oy0 = (n.size.h + n.ext.d * s0) / 2 + n.ext.y * s0 + n.pan.y;
     const x = (cx - ox0) / s0;
     const y = (oy0 - cy) / s0;
     setZoom(z1);
-    setPan({ x: cx - x * s1 - (n.size.w - n.W * s1) / 2, y: cy + y * s1 - (n.size.h + n.D * s1) / 2 });
+    setPan({ x: cx - x * s1 - (n.size.w - n.ext.w * s1) / 2 + n.ext.x * s1, y: cy + y * s1 - (n.size.h + n.ext.d * s1) / 2 - n.ext.y * s1 });
   }, []);
   // Wheel: two-finger scroll pans, pinch / Ctrl+wheel zooms (design-tool convention). Non-passive so the page never scrolls.
   useEffect(() => {
@@ -186,6 +196,8 @@ export function PlanView() {
     | { kind: "fixtureMove"; id: string; grabX: number; grabY: number }
     | { kind: "pan"; startX: number; startY: number; panX: number; panY: number; moved: boolean }
     | { kind: "drainMove"; id: string; grabX: number; grabY: number }
+    | { kind: "runMove"; id: string; grabX: number; grabY: number }
+    | { kind: "runResize"; id: string; handle: Handle; start: Rect }
     | { kind: "outletMove" };
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
@@ -257,6 +269,26 @@ export function PlanView() {
           }
           return;
         }
+        if (tool === "run") {
+          const hit = nearestWall(model, p.x, p.y);
+          const inside = p.x > 0 && p.x < W && p.y > 0 && p.y < D;
+          if (!hit || inside) {
+            setRunGhost(null);
+            setHint(inside ? "Runs go outside the walls — move the pointer beside an outside wall" : null);
+            return;
+          }
+          const side = hit.wall.side ?? "s";
+          const pen = penAtWall(model, side, hit.u);
+          const species = pen?.species;
+          const head = pen?.headCount ?? 1;
+          const width = pen ? (side === "n" || side === "s" ? zoneRect(pen).w : zoneRect(pen).d) : 24;
+          const depth = Math.max(defaultRunDepth(species, head, width), Math.min(120, Math.round(hit.dist)));
+          const u = pen ? (() => { const e = exteriorEdgesOfSide(model, pen, side); return e ?? hit.u; })() : hit.u;
+          const rect = runRectOnWall(model, side, u, width, depth);
+          setRunGhost(rect ? { rect, side, u: hit.u, zoneId: pen?.id, label: pen ? `${pen.name} run` : "Run" } : null);
+          setHint(rect ? `Click to add a ${rect.w}' × ${rect.d}' run ${pen ? `off ${pen.name} for its ${SPECIES_PRESETS[species ?? "generic"].label.toLowerCase().split(" /")[0]}s` : `on the ${SIDE_NAME[side]} wall`} · ${runGuidanceFor(species).recSqFtPerHead} sq ft each recommended` : null);
+          return;
+        }
         if (tool === "drain") {
           if (toolDrainKind === "outlet") {
             const hit = nearestWall(model, p.x, p.y);
@@ -323,6 +355,14 @@ export function PlanView() {
       }
       if (d.kind === "drainMove") {
         moveDrain(d.id, p.x - d.grabX, p.y - d.grabY);
+        return;
+      }
+      if (d.kind === "runMove") {
+        moveRun(d.id, p.x - d.grabX, p.y - d.grabY);
+        return;
+      }
+      if (d.kind === "runResize") {
+        resizeRun(d.id, resizeByHandle(d.start, d.handle, p.x, p.y));
         return;
       }
       if (d.kind === "outletMove") {
@@ -479,6 +519,18 @@ export function PlanView() {
             else if (wallGhost) placeOnWall(wallGhost.wallId, wallGhost.u);
             return;
           }
+          if (tool === "run") {
+            if (runGhost) {
+              const id = runGhost.zoneId ? addRun({ zoneId: runGhost.zoneId }) : addRun({ side: runGhost.side, offsetFt: runGhost.u, widthFt: runGhost.rect.w, depthFt: runGhost.rect.d });
+              if (id) {
+                select(id);
+                setTool("select");
+                setRunGhost(null);
+                justPlaced.current = true;
+              }
+            }
+            return;
+          }
           if (tool === "drain") {
             const p = toPlan(e, e.currentTarget);
             if (drainGhost) placeDrain(drainGhost.x, drainGhost.y);
@@ -528,6 +580,55 @@ export function PlanView() {
 
         {/* slab */}
         <rect x={px(0)} y={py(D)} width={W * scale} height={D * scale} fill={model.foundation.slab.enabled ? "#d9d6cf" : "transparent"} opacity={0.5} data-plan-bg="1" />
+
+        {/* outdoor runs (outside the walls) */}
+        <RunLayer
+          model={model}
+          px={px}
+          py={py}
+          scale={scale}
+          selection={selection}
+          hovered={hovered}
+          problems={problems}
+          showHandles={tool === "select"}
+          onPointerDown={(r, e) => {
+            if (e.button !== 0) return;
+            if (tool !== "select" && tool !== "erase") return;
+            e.stopPropagation();
+            if (tool === "erase") {
+              removeRun(r.id);
+              return;
+            }
+            (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+            select(r.id);
+            const p = toPlan(e, (e.currentTarget as SVGElement).ownerSVGElement!);
+            beginDrag({ kind: "runMove", id: r.id, grabX: p.x - r.rect.x, grabY: p.y - r.rect.y });
+          }}
+          onPointerDownHandle={(r, h, e) => {
+            e.stopPropagation();
+            (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+            beginDrag({ kind: "runResize", id: r.id, handle: h, start: { x: r.rect.x, y: r.rect.y, w: r.rect.w, d: r.rect.d } });
+          }}
+          onContextMenu={(r, e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            select(r.id);
+            openContextMenu({ kind: "run", id: r.id, x: e.clientX, y: e.clientY, from: "plan" });
+          }}
+          onHover={(id) => {
+            setHovered(id);
+            const r = id ? model.runs.find((x) => x.id === id) : null;
+            hover(r ? `${r.name} · ${r.rect.w}' × ${r.rect.d}' · ${FENCE_LABEL(r.fence.kind)} ${r.fence.heightFt}' · drag to move · right-click for more` : null);
+          }}
+        />
+        {runGhost && tool === "run" ? (
+          <g pointerEvents="none" data-testid="run-ghost">
+            <rect x={px(runGhost.rect.x)} y={py(runGhost.rect.y + runGhost.rect.d)} width={runGhost.rect.w * scale} height={runGhost.rect.d * scale} fill="#9ccc65" fillOpacity={0.35} stroke="#3f6b2e" strokeDasharray="6 3" strokeWidth={1.5} />
+            <text x={px(runGhost.rect.x + runGhost.rect.w / 2)} y={py(runGhost.rect.y + runGhost.rect.d / 2)} textAnchor="middle" fontSize={11} fill="#2f4a22">
+              {runGhost.label} · {runGhost.rect.w}′ × {runGhost.rect.d}′
+            </text>
+          </g>
+        ) : null}
 
         {/* zones (pens, aisles, rooms) and derived partitions */}
         <ZoneLayer
@@ -1234,4 +1335,16 @@ function Dimension({ x1, y1, x2, y2, label, vertical = false }: { x1: number; y1
       </text>
     </g>
   );
+}
+
+/** Wall coordinate (clockwise) of the centre of a pen's outside edge on `side`, or null. */
+function exteriorEdgesOfSide(model: NonNullable<ReturnType<typeof useProjectStore.getState>["model"]>, pen: { id: string }, side: "n" | "s" | "e" | "w"): number | null {
+  const z = model.zones.find((x) => x.id === pen.id);
+  if (!z) return null;
+  const e = exteriorEdgesOf(model, z).find((x) => x.side === side);
+  return e ? e.centerFt : null;
+}
+
+function FENCE_LABEL(kind: keyof typeof FENCE_PRESETS): string {
+  return FENCE_PRESETS[kind].label.toLowerCase();
 }

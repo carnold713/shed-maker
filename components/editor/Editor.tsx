@@ -114,6 +114,7 @@ function useKeyboardShortcuts() {
       const fixture = sel ? model?.electrical.fixtures.find((f) => f.id === sel) : undefined;
       const door = sel ? model?.zones.flatMap((z) => z.doors).find((d) => d.id === sel) : undefined;
       const drain = sel ? model?.drainage.drains.find((d) => d.id === sel) : undefined;
+      const run = sel ? model?.runs.find((r) => r.id === sel) : undefined;
 
       if (e.key === "Delete" || e.key === "Backspace") {
         if (opening) ps.removeOpening(opening.id);
@@ -122,6 +123,7 @@ function useKeyboardShortcuts() {
         else if (fixture) ps.removeFixture(fixture.id);
         else if (door) ps.removeInteriorDoor(door.id);
         else if (drain) ps.removeDrain(drain.id);
+        else if (run) ps.removeRun(run.id);
         else if (sel === "drain_outlet") ps.removeOutlet();
         else return;
         e.preventDefault();
@@ -165,6 +167,7 @@ function useKeyboardShortcuts() {
         layout: { v: "select", s: "pen", p: "pen", r: "room", a: "aisle", d: "interiorDoor", e: "erase" },
         outside: { v: "select", d: "door", w: "window", l: "leanTo", e: "erase" },
         building: { v: "select", d: "drain", e: "erase" },
+        site: { v: "select", r: "run", e: "erase" },
         electrical: { v: "select", l: "fixture", e: "erase" },
       };
       const tools = stepTools[vs.step];

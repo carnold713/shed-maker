@@ -70,6 +70,9 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
       device: { color: white ? "#b9b7b2" : "#6e7378", roughness: 0.6, metalness: 0.25 },
       wire: { color: white ? "#9a9894" : "#8e8f93", roughness: 0.5, metalness: 0.3 },
       pipe: { color: white ? "#e9e9e6" : "#f2f2ee", roughness: 0.45, metalness: 0.05 },
+      grass: { color: white ? "#e3e4de" : "#8fae6a", roughness: 1, metalness: 0 },
+      mesh: { color: white ? "#b5b3ae" : "#6e6a62", roughness: 0.6, metalness: 0.4, transparent: true, opacity: 0.4 },
+      steel: { color: white ? "#c9c8c4" : "#8d9096", roughness: 0.45, metalness: 0.6 },
     };
     const by = new Map<string, Group>();
     for (const b of geometry.boxes) {

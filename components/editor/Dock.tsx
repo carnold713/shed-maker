@@ -8,6 +8,7 @@ import { ProjectStep } from "@/components/steps/ProjectStep";
 import { LayoutStep } from "@/components/steps/LayoutStep";
 import { BuildingStep } from "@/components/steps/BuildingStep";
 import { OutsideStep } from "@/components/steps/OutsideStep";
+import { SiteStep } from "@/components/steps/SiteStep";
 import { ElectricalStep } from "@/components/steps/ElectricalStep";
 import { CheckStep } from "@/components/steps/CheckStep";
 import { PlansStep } from "@/components/steps/PlansStep";
@@ -18,6 +19,7 @@ const PANEL: Record<Step, () => ReactNode> = {
   layout: () => <LayoutStep />,
   building: () => <BuildingStep />,
   outside: () => <OutsideStep />,
+  site: () => <SiteStep />,
   electrical: () => <ElectricalStep />,
   check: () => <CheckStep />,
   plans: () => <PlansStep />,

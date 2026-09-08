@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { DockHeader, DockBody } from "@/components/editor/Dock";
 import { ZoneInspector } from "./ZoneInspector";
 import { LeanToInspector } from "./LeanToInspector";
+import { RunInspector } from "./RunInspector";
 import { InteriorDoorInspector } from "./InteriorDoorInspector";
 import { FixtureInspector } from "./FixtureInspector";
 import { DrainInspector, OutletInspector } from "./DrainInspector";
@@ -34,6 +35,7 @@ export function Inspector() {
   if (model.zones.some((z) => z.id === selection)) return <ZoneInspector id={selection} />;
   if (model.zones.some((z) => z.doors.some((d) => d.id === selection))) return <InteriorDoorInspector id={selection} />;
   if (model.leanTos.some((l) => l.id === selection)) return <LeanToInspector id={selection} />;
+  if (model.runs.some((r) => r.id === selection)) return <RunInspector id={selection} />;
   if (model.electrical.fixtures.some((f) => f.id === selection)) return <FixtureInspector id={selection} />;
   if (model.drainage.drains.some((d) => d.id === selection)) return <DrainInspector id={selection} />;
   if (selection === "drain_outlet" && model.drainage.outlet) return <OutletInspector />;

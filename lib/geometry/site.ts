@@ -1,0 +1,97 @@
+/**
+ * Runs and fences in 3D (ADR-0017): a grass patch per run, posts at the
+ * preset spacing, rails or mesh between them by fence kind, and a steel
+ * frame at each gate. World: x east, y up, z south (plan +y == world -z).
+ */
+import type { BuildingModel, Run } from "@/lib/model/schema";
+import { FENCE_PRESETS, runEdges, type RunEdge } from "@/lib/model/runs";
+import type { BoxMember, Vec3 } from "./types";
+
+const POST_FT = 4 / 12;
+const GATE_POST_FT = 6 / 12;
+
+function box(id: string, kind: BoxMember["kind"], material: BoxMember["material"], entityId: string, center: Vec3, size: Vec3): BoxMember {
+  return { id, kind, layer: "site", entityId, material, center, size, rotation: [0, 0, 0] };
+}
+
+/** Box along an edge from u0 to u1 (feet from the edge's west/south end) between heights h0 and h1, `t` thick. */
+function alongEdge(e: RunEdge, id: string, kind: BoxMember["kind"], material: BoxMember["material"], entityId: string, u0: number, u1: number, h0: number, h1: number, t: number): BoxMember {
+  const horizontal = e.side === "n" || e.side === "s";
+  const x0 = Math.min(e.x0, e.x1);
+  const y0 = Math.min(e.y0, e.y1);
+  const len = u1 - u0;
+  const h = (h0 + h1) / 2;
+  return horizontal ? box(id, kind, material, entityId, [x0 + u0 + len / 2, h, -y0], [len, h1 - h0, t]) : box(id, kind, material, entityId, [x0, h, -(y0 + u0 + len / 2)], [t, h1 - h0, len]);
+}
+
+function post(e: RunEdge, id: string, entityId: string, u: number, h: number, size: number): BoxMember {
+  const horizontal = e.side === "n" || e.side === "s";
+  const x0 = Math.min(e.x0, e.x1);
+  const y0 = Math.min(e.y0, e.y1);
+  const c: Vec3 = horizontal ? [x0 + u, (h + 0.3) / 2, -y0] : [x0, (h + 0.3) / 2, -(y0 + u)];
+  return box(id, "fencePost", "ptWood", entityId, c, [size, h + 0.3, size]);
+}
+
+function runGeometry(model: BuildingModel, r: Run): BoxMember[] {
+  const out: BoxMember[] = [];
+  const preset = FENCE_PRESETS[r.fence.kind];
+  const h = r.fence.heightFt;
+  // Ground patch just above the ground plane.
+  out.push(box(`ground_${r.id}`, "ground", "grass", r.id, [r.rect.x + r.rect.w / 2, 0.02, -(r.rect.y + r.rect.d / 2)], [r.rect.w, 0.04, r.rect.d]));
+  for (const e of runEdges(model, r)) {
+    if (e.onBuilding) continue;
+    const gates = r.gates.filter((g) => g.side === e.side).sort((a, b) => a.offsetFt - b.offsetFt);
+    // Posts: both ends and every spacing between; gate posts heavier at each gate jamb.
+    const n = Math.max(1, Math.ceil(e.lengthFt / preset.postSpacingFt));
+    for (let i = 0; i <= n; i++) {
+      const u = Math.min(e.lengthFt, (i * e.lengthFt) / n);
+      if (gates.some((g) => u > g.offsetFt - 0.2 && u < g.offsetFt + g.widthFt + 0.2)) continue;
+      out.push(post(e, `post_${r.id}_${e.side}_${i}`, r.id, u, h, POST_FT));
+    }
+    for (const g of gates) {
+      out.push(post(e, `gpost_${r.id}_${g.id}_a`, r.id, g.offsetFt, h + 0.3, GATE_POST_FT));
+      out.push(post(e, `gpost_${r.id}_${g.id}_b`, r.id, g.offsetFt + g.widthFt, h + 0.3, GATE_POST_FT));
+      // Gate: a steel tube frame set a little off the ground.
+      out.push(alongEdge(e, `gate_${r.id}_${g.id}`, "gate", "steel", r.id, g.offsetFt + 0.1, g.offsetFt + g.widthFt - 0.1, 0.3, Math.min(h, 5) , 0.12));
+    }
+    // Infill between gates.
+    const spans: [number, number][] = [];
+    let c = 0;
+    for (const g of gates) {
+      if (g.offsetFt > c + 0.05) spans.push([c, g.offsetFt]);
+      c = g.offsetFt + g.widthFt;
+    }
+    if (e.lengthFt > c + 0.05) spans.push([c, e.lengthFt]);
+    spans.forEach(([u0, u1], k) => {
+      const id = `fence_${r.id}_${e.side}_${k}`;
+      if (preset.material === "board") {
+        const rails = preset.rails ?? 3;
+        for (let i = 0; i < rails; i++) {
+          const top = h - 0.15 - i * ((h - 1) / (rails - 1 || 1)) * 0.85;
+          out.push(alongEdge(e, `${id}_rail${i}`, "fenceRail", "ptWood", r.id, u0, u1, top - 0.46, top, 0.125));
+        }
+      } else if (preset.material === "strand") {
+        const strands = preset.rails ?? 5;
+        for (let i = 0; i < strands; i++) {
+          const y = 0.8 + ((h - 0.8) * i) / Math.max(1, strands - 1);
+          out.push(alongEdge(e, `${id}_strand${i}`, "fenceRail", "wire", r.id, u0, u1, y - 0.02, y + 0.02, 0.04));
+        }
+      } else if (r.fence.kind === "pipePanel") {
+        for (let i = 0; i < 5; i++) {
+          const y = 0.9 + ((h - 0.9) * i) / 4;
+          out.push(alongEdge(e, `${id}_rail${i}`, "fenceRail", "steel", r.id, u0, u1, y - 0.08, y + 0.08, 0.16));
+        }
+      } else {
+        // Woven, welded, chain link, hardware cloth: a translucent mesh panel.
+        out.push(alongEdge(e, `${id}_mesh`, "fencePanel", "mesh", r.id, u0, u1, 0.1, h, 0.03));
+      }
+      if (r.fence.topRail && preset.material !== "board") out.push(alongEdge(e, `${id}_top`, "fenceRail", "ptWood", r.id, u0, u1, h - 0.46, h, 0.125));
+    });
+  }
+  return out;
+}
+
+export function siteGeometry(model: BuildingModel): BoxMember[] {
+  if (model.footprint.kind !== "rect" || model.runs.length === 0) return [];
+  return model.runs.flatMap((r) => runGeometry(model, r));
+}

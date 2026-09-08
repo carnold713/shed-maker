@@ -44,6 +44,7 @@ export function createDefaultModel(opts: { name?: string; wFt?: number; dFt?: nu
       vents: { ridge: true, gable: false, soffit: false, cupola: false },
     },
     leanTos: [],
+    runs: [],
     foundation: {
       kind: "embeddedPost",
       slab: { enabled: true, thicknessIn: 4, gravelBaseIn: 4, vaporBarrier: true, reinforcement: "mesh", zones: [], aprons: true, apronDepthFt: 8, aboveGradeIn: 6 },

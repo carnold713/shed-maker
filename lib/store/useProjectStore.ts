@@ -12,6 +12,7 @@ import * as lc from "@/lib/model/leanTos";
 import * as dc from "@/lib/model/interiorDoors";
 import * as ec from "@/lib/model/electrical";
 import * as drc from "@/lib/model/drainage";
+import * as rc from "@/lib/model/runs";
 
 import { newId } from "@/lib/model/ids";
 
@@ -62,6 +63,17 @@ export interface ProjectState {
   growToFitZones: () => void;
   fitEnvelopeToZones: () => void;
   applyLayout: (pattern: LayoutPattern, opts?: LayoutOptions) => void;
+  addRun: (input: rc.AddRunInput) => string | null;
+  updateRun: (id: string, patch: Parameters<typeof rc.updateRun>[2]) => void;
+  moveRun: (id: string, x: number, y: number) => void;
+  resizeRun: (id: string, rect: Parameters<typeof rc.resizeRun>[2]) => void;
+  removeRun: (id: string) => void;
+  fitRunToHead: (id: string) => void;
+  addRunGate: (runId: string, input?: rc.AddGateInput) => void;
+  updateRunGate: (runId: string, gateId: string, patch: Parameters<typeof rc.updateRunGate>[3]) => void;
+  removeRunGate: (runId: string, gateId: string) => void;
+  /** One run per pen on an outside wall that has none yet. Returns the ids added. */
+  autoRuns: () => string[];
   addLeanTo: (input: lc.AddLeanToInput) => string | null;
   updateLeanTo: (id: string, patch: Parameters<typeof lc.updateLeanTo>[2]) => void;
   removeLeanTo: (id: string) => void;
@@ -170,6 +182,27 @@ export const useProjectStore = create<ProjectState>()(
         growToFitZones: () => apply((m) => zc.growToFitZones(m)),
         fitEnvelopeToZones: () => apply((m) => zc.fitEnvelopeToZones(m)),
         applyLayout: (pattern, opts) => apply((m) => applyLayout(m, pattern, opts)),
+        addRun: (input) => {
+          const id = input.id ?? newId("run");
+          apply((m) => rc.addRun(m, { ...input, id }));
+          return get().model?.runs.some((r) => r.id === id) ? id : null;
+        },
+        updateRun: (id, patch) => apply((m) => rc.updateRun(m, id, patch)),
+        moveRun: (id, x, y) => apply((m) => rc.moveRun(m, id, x, y)),
+        resizeRun: (id, rect) => apply((m) => rc.resizeRun(m, id, rect)),
+        removeRun: (id) => {
+          apply((m) => rc.removeRun(m, id));
+          if (get().selection === id) set({ selection: null });
+        },
+        fitRunToHead: (id) => apply((m) => rc.fitRunToHead(m, id)),
+        addRunGate: (runId, input) => apply((m) => rc.addRunGate(m, runId, input)),
+        updateRunGate: (runId, gateId, patch) => apply((m) => rc.updateRunGate(m, runId, gateId, patch)),
+        removeRunGate: (runId, gateId) => apply((m) => rc.removeRunGate(m, runId, gateId)),
+        autoRuns: () => {
+          const before = new Set(get().model?.runs.map((r) => r.id) ?? []);
+          apply((m) => rc.autoRuns(m));
+          return (get().model?.runs ?? []).filter((r) => !before.has(r.id)).map((r) => r.id);
+        },
         addLeanTo: (input) => {
           const id = input.id ?? newId("lt");
           apply((m) => lc.addLeanTo(m, { ...input, id }));

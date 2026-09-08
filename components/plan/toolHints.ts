@@ -30,6 +30,8 @@ export function toolHint(vs: Pick<ViewState, "tool" | "toolSpecies" | "toolRoomT
     }
     case "leanTo":
       return "Click an outside wall to add a lean-to on that side · Esc to cancel";
+    case "run":
+      return "Click beside an outside wall to add a fenced run there · off a stall it takes the stall's animals · Esc to cancel";
     case "fixture": {
       const p = FIXTURE_PRESETS[vs.toolFixtureKind as FixtureKind];
       return p.wall ? `Click to mount a ${p.short.toLowerCase()} · it locks onto the nearest wall or partition · Esc to cancel` : `Click where the ${p.short.toLowerCase()} goes · R turns it after · Esc to cancel`;
