@@ -71,3 +71,197 @@ body {
 .chip:active {
   transform: translateY(1px);
 }
+
+/* ---- Blueprint pack (printable sheets) ---- */
+.pack {
+  background: #e9e5dc;
+  min-height: 100vh;
+  padding: 1rem 1rem 3rem;
+}
+.pack-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 auto 1rem;
+  max-width: 11in;
+  padding: 0.6rem 0.9rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+}
+.sheet {
+  width: 11in;
+  min-height: 8.5in;
+  margin: 0 auto 1rem;
+  padding: 0.4in 0.45in;
+  background: #fff;
+  color: #1c1b19;
+  box-shadow: 0 1px 2px rgba(31, 29, 26, 0.08), 0 14px 40px -20px rgba(31, 29, 26, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25in;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+}
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-bottom: 2px solid #1c1b19;
+  padding-bottom: 6px;
+}
+.sheet-code {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: #6f6a62;
+}
+.sheet-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.sheet-meta {
+  text-align: right;
+  font-size: 10px;
+  color: #4a4741;
+}
+.sheet-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2in;
+}
+.sheet-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+}
+.sheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+}
+.sheet-table th {
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 1px solid #1c1b19;
+  padding: 3px 6px 3px 0;
+  white-space: nowrap;
+}
+.sheet-table td {
+  border-bottom: 1px solid #e6e1d8;
+  padding: 3px 6px 3px 0;
+  vertical-align: top;
+}
+.sheet-table.compact {
+  font-size: 9.5px;
+}
+.sheet-table.compact td,
+.sheet-table.compact th {
+  padding: 2px 5px 2px 0;
+}
+.sheet-notes {
+  font-size: 10px;
+  color: #2b2925;
+}
+.sheet-notes-title {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 9px;
+  color: #6f6a62;
+  margin-bottom: 2px;
+}
+.sheet-notes ol {
+  padding-left: 1.1em;
+  list-style: decimal;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sheet-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+  font-size: 10.5px;
+}
+.sheet-kv > div {
+  display: contents;
+}
+.sheet-kv dt {
+  color: #6f6a62;
+}
+.sheet-kv dd {
+  font-weight: 500;
+}
+.sequence {
+  columns: 2;
+  column-gap: 0.4in;
+  font-size: 10px;
+}
+.sequence li {
+  break-inside: avoid;
+  margin-bottom: 7px;
+}
+.seq-title {
+  font-weight: 600;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.seq-n {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #1c1b19;
+  color: #fff;
+  font-size: 10px;
+}
+.seq-sheet {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 9px;
+  color: #6f6a62;
+}
+.seq-check {
+  color: #8a3f1e;
+}
+@page {
+  size: letter landscape;
+  margin: 0.3in;
+}
+@media print {
+  .pack {
+    background: #fff;
+    padding: 0;
+  }
+  .pack-toolbar {
+    display: none;
+  }
+  .sheet {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    box-shadow: none;
+    page-break-after: always;
+    break-after: page;
+    padding: 0.1in 0.15in;
+  }
+  .sheet:last-child {
+    page-break-after: auto;
+  }
+  body {
+    background: #fff;
+  }
+}

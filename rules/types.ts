@@ -12,6 +12,9 @@ export type RuleSource =
   | `ASCE7:${string}`
   | "Industry"
   | `Species:${string}`
+  | `NEC:${string}`
+  | `ASABE:${string}`
+  | `MWPS:${string}`
   | "User";
 
 export type Severity = "error" | "warn" | "info";

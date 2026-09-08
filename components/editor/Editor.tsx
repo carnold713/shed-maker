@@ -1,117 +1,68 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { BuildingModel } from "@/lib/model/schema";
 import { useProjectStore } from "@/lib/store/useProjectStore";
-import { useViewStore } from "@/lib/store/useViewStore";
-import { PlanView } from "@/components/plan/PlanView";
-import { Inspector } from "@/components/inspector/Inspector";
-import { CheckPanel } from "@/components/inspector/CheckPanel";
-import type { ViewMode } from "./Toolbar";
+import { STEPS, useViewStore, type Step } from "@/lib/store/useViewStore";
 import { useAutosave } from "./useAutosave";
 import { ContextMenuHost } from "./ContextMenuHost";
 import { Rail } from "./Rail";
-import { ProjectPanel } from "./ProjectPanel";
-import { StageHeader } from "./StageHeader";
-import { BottomCards } from "./BottomCards";
-import { InspectorDock } from "./InspectorDock";
-
-// The 3D bundle stays out of the initial route (SPEC §12).
-const Viewer = dynamic(() => import("@/components/scene/Viewer").then((m) => m.Viewer), {
-  ssr: false,
-  loading: () => <div className="flex h-full items-center justify-center text-sm text-muted">Loading 3D…</div>,
-});
+import { TopBar } from "./TopBar";
+import { Stage } from "./Stage";
+import { StatusBar } from "./StatusBar";
+import { Dock } from "./Dock";
+import { ownerStep } from "./selectionOwner";
 
 /**
- * Editor shell (reference layout): icon rail · project panel · stage.
- * The stage hosts the 3D view, the plan, or both, with the title and
- * actions floating on top, the inspector docked on the right, and the
- * materials / checks cards along the bottom.
+ * Editor shell (ADR-0012, UX audit §2): a step rail on the left, one stage
+ * with a top bar and a status bar, and one dock panel on the right that
+ * shows either the active step or the selected item.
  */
-export function Editor({ projectId, initialModel }: { projectId: string; initialModel: BuildingModel }) {
+export function Editor({ projectId, initialModel, initialStep }: { projectId: string; initialModel: BuildingModel; initialStep?: Step }) {
   const load = useProjectStore((s) => s.load);
   const loadedId = useProjectStore((s) => s.projectId);
-  const selection = useProjectStore((s) => s.selection);
-  const [view, setView] = useState<ViewMode>("split");
-  const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [checksOpen, setChecksOpen] = useState(false);
-  const [projectDrawer, setProjectDrawer] = useState(false);
+  const setStep = useViewStore((s) => s.setStep);
 
   useEffect(() => {
-    if (loadedId !== projectId) load(projectId, initialModel);
-  }, [projectId, initialModel, load, loadedId]);
-
-  // Selecting something always reveals the inspector.
-  useEffect(() => {
-    if (selection) setInspectorOpen(true);
-  }, [selection]);
+    if (loadedId !== projectId) {
+      load(projectId, initialModel);
+      setStep(initialStep && STEPS.some((s) => s.id === initialStep) ? initialStep : "layout");
+    }
+  }, [projectId, initialModel, load, loadedId, initialStep, setStep]);
 
   useAutosave();
   useKeyboardShortcuts();
+  useSelectionOwnership();
 
   if (loadedId !== projectId) {
     return <div className="flex h-screen items-center justify-center text-sm text-muted">Loading project…</div>;
   }
 
   return (
-    <div className="flex h-screen bg-background">
-      <Rail view={view} onView={setView} onCheck={() => setChecksOpen((v) => !v)} onPack={() => setChecksOpen(false)} onProject={() => setProjectDrawer((v) => !v)} projectOpen={projectDrawer} />
-      {/* Project panel: in flow on wide screens, a drawer elsewhere. */}
-      <div className="hidden 2xl:flex">
-        <ProjectPanel />
-      </div>
-      {projectDrawer ? (
-        <div className="absolute inset-y-0 left-16 z-30 flex shadow-2xl 2xl:hidden" data-testid="project-drawer">
-          <ProjectPanel />
-        </div>
-      ) : null}
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f3f0ea]">
+    <div className="flex h-screen bg-background text-foreground">
+      <Rail />
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <TopBar />
         <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1">
-        {/* stage content */}
-        <div className="absolute inset-0 flex">
-          {view !== "3d" ? (
-            <div className={`${view === "split" ? "w-[46%] border-r border-border/60" : "w-full"} relative min-w-0 pt-28`}>
-              <PlanView />
-            </div>
-          ) : null}
-          {view !== "plan" ? (
-            <div className={`${view === "split" ? "w-[54%]" : "w-full"} relative min-w-0`}>
-              <Viewer />
-            </div>
-          ) : null}
+          <Stage />
+          <Dock />
         </div>
-
-        <StageHeader />
-
-        {/* view-mode chips for tests / quick switching */}
-        <div className="glass absolute left-1/2 top-5 z-10 flex -translate-x-1/2 items-center gap-1 p-1 text-xs">
-          {(["split", "3d", "plan"] as ViewMode[]).map((v) => (
-            <button key={v} onClick={() => setView(v)} className={`chip ${view === v ? "chip-on" : ""}`} aria-pressed={view === v}>
-              {v === "split" ? "Split" : v === "3d" ? "3D" : "Plan"}
-            </button>
-          ))}
-        </div>
-
-        </div>
-        <InspectorDock open={inspectorOpen} onToggle={() => setInspectorOpen((v) => !v)}>
-          {checksOpen ? <CheckPanel /> : null}
-          <Inspector />
-          {!checksOpen ? <CheckPanel /> : null}
-        </InspectorDock>
-        </div>
-
-        <BottomCards
-          onOpenChecks={() => {
-            setChecksOpen(true);
-            setInspectorOpen(true);
-          }}
-        />
+        <StatusBar />
       </main>
       <ContextMenuHost />
     </div>
   );
+}
+
+/** Changing step keeps the selection only when that step owns it (UX audit §3.1). */
+function useSelectionOwnership() {
+  const step = useViewStore((s) => s.step);
+  useEffect(() => {
+    const ps = useProjectStore.getState();
+    if (!ps.selection || !ps.model) return;
+    const owner = ownerStep(ps.model, ps.selection);
+    if (owner && owner !== step && step !== "check") ps.select(null);
+  }, [step]);
 }
 
 function useKeyboardShortcuts() {
@@ -121,35 +72,60 @@ function useKeyboardShortcuts() {
       const inField = !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
       if (inField && e.key === "Escape") {
         target.blur();
-      } else if (inField) return;
+        return;
+      }
+      if (inField) return;
       const ps = useProjectStore.getState();
       const vs = useViewStore.getState();
-      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
-        const sel = ps.selection;
-        const opening = sel ? ps.model?.openings.find((o) => o.id === sel) : undefined;
-        const zone = sel ? ps.model?.zones.find((z) => z.id === sel) : undefined;
-        const leanTo = sel ? ps.model?.leanTos.find((l) => l.id === sel) : undefined;
-        if ((e.key === "Delete" || e.key === "Backspace") && opening) {
+      const mod = e.metaKey || e.ctrlKey;
+
+      if (mod && !e.altKey) {
+        const t = useProjectStore.temporal.getState();
+        const k = e.key.toLowerCase();
+        if (k === "z" && e.shiftKey) {
           e.preventDefault();
-          ps.removeOpening(opening.id);
-          return;
-        }
-        if ((e.key === "Delete" || e.key === "Backspace") && zone) {
+          t.redo();
+        } else if (k === "z") {
           e.preventDefault();
-          ps.removeZone(zone.id);
-          return;
-        }
-        if ((e.key === "Delete" || e.key === "Backspace") && leanTo) {
+          t.undo();
+        } else if (k === "y") {
           e.preventDefault();
-          ps.removeLeanTo(leanTo.id);
-          return;
-        }
-        if (zone && e.key.toLowerCase() === "d") {
+          t.redo();
+        } else if (k === "d") {
+          const zone = ps.selection ? ps.model?.zones.find((z) => z.id === ps.selection) : undefined;
+          if (zone) {
+            e.preventDefault();
+            ps.duplicateZone(zone.id, ps.model?.roof.ridgeAxis === "ns" ? "n" : "e");
+          }
+        } else if (/^[1-7]$/.test(e.key)) {
           e.preventDefault();
-          ps.duplicateZone(zone.id, ps.model?.roof.ridgeAxis === "ns" ? "n" : "e");
-          return;
+          const step = STEPS[Number(e.key) - 1];
+          if (step) vs.setStep(step.id);
         }
-        if (zone && e.key.startsWith("Arrow")) {
+        return;
+      }
+      if (e.altKey) return;
+
+      const sel = ps.selection;
+      const model = ps.model;
+      const opening = sel ? model?.openings.find((o) => o.id === sel) : undefined;
+      const zone = sel ? model?.zones.find((z) => z.id === sel) : undefined;
+      const leanTo = sel ? model?.leanTos.find((l) => l.id === sel) : undefined;
+      const fixture = sel ? model?.electrical.fixtures.find((f) => f.id === sel) : undefined;
+      const door = sel ? model?.zones.flatMap((z) => z.doors).find((d) => d.id === sel) : undefined;
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (opening) ps.removeOpening(opening.id);
+        else if (zone) ps.removeZone(zone.id);
+        else if (leanTo) ps.removeLeanTo(leanTo.id);
+        else if (fixture) ps.removeFixture(fixture.id);
+        else if (door) ps.removeInteriorDoor(door.id);
+        else return;
+        e.preventDefault();
+        return;
+      }
+      if (e.key.startsWith("Arrow")) {
+        if (zone) {
           e.preventDefault();
           const step = e.shiftKey ? 4 : 1;
           const xs = zone.polygon.map((p) => p.x);
@@ -157,56 +133,40 @@ function useKeyboardShortcuts() {
           const x = Math.min(...xs) + (e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0);
           const y = Math.min(...ys) + (e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0);
           ps.moveZone(zone.id, Math.max(0, x), Math.max(0, y), vs.autoGrow);
-          return;
-        }
-        if (opening && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        } else if (opening && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
           e.preventDefault();
           const step = (e.shiftKey ? 1 : 1 / 12) * (e.key === "ArrowLeft" ? -1 : 1);
           ps.moveOpening(opening.id, opening.offsetFt + step);
-          return;
-        }
-        const toolKeys: Record<string, "select" | "pen" | "aisle" | "room" | "erase" | "door" | "window" | "leanTo"> = { v: "select", p: "pen", a: "aisle", r: "room", e: "erase", d: "door", w: "window", l: "leanTo" };
-        if (toolKeys[e.key.toLowerCase()]) {
-          vs.setTool(toolKeys[e.key.toLowerCase()]);
-          return;
-        }
-        if (e.key === "Escape") {
-          if (vs.tool !== "select") vs.setTool("select");
-          else ps.select(null);
-          vs.closeContextMenu();
-          return;
-        }
-        if (e.key.toLowerCase() === "x") {
-          vs.setCutHeight(vs.cutHeightFt === null ? 4 : null);
-          return;
-        }
-        if (e.key.toLowerCase() === "f") {
-          vs.requestFit();
-          return;
-        }
-        if (e.key === "`") {
-          vs.setPreset(vs.preset === "framing" ? "exterior" : "framing");
-          return;
-        }
-        if (e.key.toLowerCase() === "i") {
-          vs.setIsometric(!vs.isometric);
-          return;
+        } else if (fixture) {
+          e.preventDefault();
+          const step = e.shiftKey ? 2 : 0.5;
+          ps.moveFixture(fixture.id, fixture.x + (e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0), fixture.y + (e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0));
         }
         return;
       }
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      const t = useProjectStore.temporal.getState();
-      if (e.key.toLowerCase() === "z" && e.shiftKey) {
-        e.preventDefault();
-        t.redo();
-      } else if (e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        t.undo();
-      } else if (e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        t.redo();
+      // Escape ladder: menu → tool → selection.
+      if (e.key === "Escape") {
+        if (vs.contextMenu) vs.closeContextMenu();
+        else if (vs.tool !== "select") vs.setTool("select");
+        else ps.select(null);
+        return;
       }
+      const k = e.key.toLowerCase();
+      // Tool letters: only the tools of the active step.
+      const stepTools: Partial<Record<Step, Record<string, typeof vs.tool>>> = {
+        layout: { v: "select", s: "pen", p: "pen", r: "room", a: "aisle", d: "interiorDoor", e: "erase" },
+        outside: { v: "select", d: "door", w: "window", l: "leanTo", e: "erase" },
+        electrical: { v: "select", l: "fixture", e: "erase" },
+      };
+      const tools = stepTools[vs.step];
+      if (tools && tools[k]) {
+        vs.setTool(tools[k]);
+        return;
+      }
+      if (k === "x") vs.setCutHeight(vs.cutHeightFt === null ? 4 : null);
+      else if (k === "f") vs.requestFit();
+      else if (k === "i") vs.setIsometric(!vs.isometric);
+      else if (e.key === "`") vs.setPreset(vs.preset === "framing" ? "exterior" : "framing");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

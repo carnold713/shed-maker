@@ -2,7 +2,10 @@
 
 Construction-ready barn and shed design: set a footprint and carve up the interior, or place stalls and let the tool derive the envelope. One `BuildingModel` drives the 2D plan, the 3D scene, the framing layer, the materials list, and the plan sheets.
 
-`docs/SPEC.md` (v2, Part II wins over Part I) is the source of truth. Milestones 0 (skeleton) and 1 (envelope: openings, post-frame framing as real geometry, views, right-click model) are complete; see `docs/handoffs/` for the current state and next steps.
+`docs/SPEC.md` (v2, Part II wins over Part I) is the source of truth. Shipped: the envelope (openings, post-frame framing as real geometry), the interior (stalls, aisles, rooms, doors, derived partitions), the exterior catalog (doors, windows, lean-tos, concrete), a WebGPU-first renderer, the step-based editor, electrical planning (lights, outlets, panel, circuits, routing), the new-barn wizard, and a printable blueprint pack with a cut list, hardware schedule, build sequence and a raw-materials cost estimate. See `docs/handoffs/` for the current state and next steps.
+
+## How it is organised for the user
+Seven steps in the left rail — **Project · Layout · Building · Outside · Electrical · Check · Plans** — each with one panel of controls and its own plan tools. The status bar always says what the pointer is over or what a click will do. **Plans** opens `/p/[id]/pack`: eleven Letter-landscape sheets (cover, floor plan, foundation & post plan, wall framing elevations, roof framing, electrical plan & panel schedule, schedules, materials & cost, cut list, hardware, build sequence) that print to PDF from the browser. Prices are placeholders you can edit; every number traces to a rule, a member or a research table (`docs/research/`).
 
 ## Stack
 Next.js 15 (App Router) · TypeScript strict · Tailwind v4 · React Three Fiber · Zustand + zundo · Zod · Prisma + Postgres · Clerk · Railway.
@@ -22,12 +25,12 @@ npm run db:migrate   # prisma migrate deploy
 
 ## Layout
 ```
-app/          routes: /, /new, /p/[id], /api/*
-components/   ui/, editor/, inspector/, plan/, scene/, auth/, site/
-lib/          model/ (schema, commands, openings, migrations), framing/ (post-frame + stick generators), geometry/, store/, repo/, units.ts
-rules/        design/, structural/, framing/, materials/ (lumber table), animals/, mep/  — pure rules with citations
+app/          routes: /, /new (wizard), /p/[id] (editor), /p/[id]/pack (blueprints), /api/*
+components/   ui/, editor/ (shell), steps/ (one panel per step), inspector/ (selected item), plan/, scene/, pack/ (sheets), auth/, site/
+lib/          model/ (schema, commands, zones, interiorDoors, leanTos, electrical, wizard), framing/, geometry/, interior/, electrical/, bom/ (estimate, cutlist, hardware, sequence), store/, repo/, units.ts
+rules/        design/, structural/, framing/, materials/ (lumber, prices), animals/, mep/ (electrical)  — pure rules with citations
 agents/       persona files for the agent team (SPEC §2)
-docs/         SPEC.md, adr/, handoffs/, agents.md, RULES_INDEX.md
+docs/         SPEC.md, adr/, handoffs/, research/, ux/, agents.md, RULES_INDEX.md
 prisma/       schema + migrations
 tests/        vitest (model, rules, geometry, store) + Playwright e2e
 ```

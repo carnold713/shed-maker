@@ -10,7 +10,7 @@ import type { BuildingModel, Wall } from "@/lib/model/schema";
 import { wallLengthFt } from "@/lib/model/walls";
 import { actualFt, stockLength, POST_STOCK_LENGTHS_FT, type LumberSize } from "@/rules/materials/lumber";
 import { headroomFor } from "@/lib/model/openings";
-import { planToWorld } from "@/lib/geometry/frame";
+import { eulerYX, planToWorld } from "@/lib/geometry/frame";
 import type { Vec3 } from "@/lib/geometry/types";
 import type { FramingMember, FramingSet, PostScheduleRow } from "./types";
 import { freeSegments, openingSpans, wallFrame, wallLocalToWorld, wallRotation, type WallFrame } from "./wallFrame";
@@ -26,7 +26,20 @@ export const RULES = {
   header: "framing.postFrame.openingHeader",
   trussLayout: "framing.postFrame.trussLayout",
   purlins: "framing.postFrame.purlinSpacing",
+  kneeBrace: "framing.postFrame.kneeBrace",
 } as const;
+
+/** Knee braces (RCO §328 prescriptive post-frame; docs/research/construction-details.md §4): 2×6 at 45°, legs 36" (48" for tall or wide barns). */
+export function kneeBraceLegFt(model: BuildingModel): number {
+  if (model.footprint.kind !== "rect") return 3;
+  const span = model.roof.ridgeAxis === "ns" ? model.footprint.wFt : model.footprint.dFt;
+  return model.eaveHeightFt >= 14 || span >= 40 ? 4 : 3;
+}
+export function needsKneeBraces(model: BuildingModel): boolean {
+  if (model.footprint.kind !== "rect" || model.frame.system === "stickFrame") return false;
+  const span = model.roof.ridgeAxis === "ns" ? model.footprint.wFt : model.footprint.dFt;
+  return model.eaveHeightFt >= 10 || span >= 30;
+}
 
 /** Openings at or above this width get a post at each jamb (SPEC §20.1). */
 export const JAMB_POST_MIN_WIDTH_FT = 8;
@@ -126,6 +139,7 @@ export function generatePostFrame(model: BuildingModel): FramingSet {
   const carrier = actualFt(fr.carrier.size);
   const embedFt = fr.post.foundation === "embedded" ? fr.post.embedIn / 12 : 0;
   const padDiaFt = fr.post.padDiaIn / 12;
+  const braces = needsKneeBraces(model);
 
   for (const wall of model.walls) {
     if (wall.role !== "exterior") continue;
@@ -150,9 +164,32 @@ export function generatePostFrame(model: BuildingModel): FramingSet {
       members.push(
         wallBox(f, id, "post", "framing", fr.post.size, p.u - post.t / 2, p.u + post.t / 2, -embedFt, postTop, postN0, postN1, p.role === "jamb" ? RULES.jambPosts : RULES.postLayout, {
           treatment: fr.post.foundation === "embedded" ? "UC4B" : "UC3B",
-          note: `${p.role} post · ${lengthFt.toFixed(1)}' (stock ${stock.stockFt}')`,
+          note: `${p.role} post · ${lengthFt.toFixed(1)}' (stock ${stock.stockFt}')${isBearing ? ` · notch inside face 1½" × ${(carrier.d * 12).toFixed(2).replace(/\.?0+$/, "")}" for the carrier` : ""}`,
         }),
       );
+      // Knee brace: 2×6 at 45° from the post to the truss beside it, on the inside, in the truss plane.
+      if (isBearing && braces) {
+        const a = kneeBraceLegFt(model);
+        const brace = actualFt("2x6");
+        const uB = p.u + post.t / 2 + brace.t / 2 + 0.02;
+        const centre = wallLocalToWorld(f, uB, H - a / 2, postN0 - a / 2);
+        const yaw = wallRotation(f)[1];
+        members.push(
+          member({
+            id: `knee_${id}`,
+            kind: "kneeBrace",
+            layer: "framing",
+            nominal: "2x6",
+            lengthFt: a * Math.SQRT2 + 11 / 12,
+            entityId: wall.id,
+            ruleRef: RULES.kneeBrace,
+            center: centre,
+            size: [brace.t, brace.d, a * Math.SQRT2],
+            rotation: eulerYX(yaw, Math.PI / 4),
+            note: `knee brace · legs ${a * 12}" · 45° both ends · ½" × 8" bolt at the post, (4) 16d at the truss block`,
+          }),
+        );
+      }
       if (fr.post.foundation === "embedded") {
         const padT = padDiaFt / 2;
         const [cx, , cz] = wallLocalToWorld(f, p.u, 0, (postN0 + postN1) / 2);

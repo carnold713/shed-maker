@@ -24,6 +24,8 @@ export function InstancedBoxes({
   metalness = 0.02,
   transparent = false,
   opacity = 1,
+  emissive,
+  emissiveIntensity = 0,
   clippingPlanes,
   onClick,
   onContextMenu,
@@ -39,6 +41,9 @@ export function InstancedBoxes({
   metalness?: number;
   transparent?: boolean;
   opacity?: number;
+  /** Self-lit surfaces (light fixtures). */
+  emissive?: string;
+  emissiveIntensity?: number;
   clippingPlanes: THREE.Plane[];
   onClick?: (box: BoxMember, e: ThreeEvent<MouseEvent>) => void;
   onContextMenu?: (box: BoxMember, e: ThreeEvent<MouseEvent>) => void;
@@ -88,10 +93,12 @@ export function InstancedBoxes({
     material.metalness = metalness;
     material.transparent = transparent;
     material.opacity = opacity;
+    material.emissive.set(emissive ?? "#000000");
+    material.emissiveIntensity = emissive ? emissiveIntensity : 0;
     material.clippingPlanes = clippingPlanes;
     material.needsUpdate = true;
     invalidate();
-  }, [material, roughness, metalness, transparent, opacity, clippingPlanes, invalidate]);
+  }, [material, roughness, metalness, transparent, opacity, emissive, emissiveIntensity, clippingPlanes, invalidate]);
   useEffect(() => () => material.dispose(), [material]);
 
   if (count === 0) return null;

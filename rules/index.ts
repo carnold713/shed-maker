@@ -6,6 +6,8 @@ import { frostDepthVerified } from "./structural/frostDepthVerified";
 import { openingCornerClearance, openingFitsWall, openingOnPostLine, openingsOverlap, overheadDoorHeadroom } from "./framing/openings";
 import { aisleMinWidth, partitionOnPostLine, penHasAccess, penMinimumSize, zonesInsideFootprint, zonesOverlap } from "./design/zones";
 import { leanToClearance, leanToRafterSpan } from "./design/leanTos";
+import { interiorDoorWidth, zoneHasDoor } from "./design/interiorDoors";
+import { ELECTRICAL_RULES } from "./mep/electrical";
 
 export * from "./types";
 
@@ -26,6 +28,9 @@ export const RULES: Rule[] = [
   partitionOnPostLine,
   leanToClearance,
   leanToRafterSpan,
+  interiorDoorWidth,
+  zoneHasDoor,
+  ...ELECTRICAL_RULES,
   footprintModule,
 ];
 

@@ -5,7 +5,7 @@ import type { Layer } from "@/lib/framing/types";
 
 export type ViewPreset = "exterior" | "framing" | "dollhouse" | "interior" | "plan";
 
-export const ALL_LAYERS: Layer[] = ["slab", "foundation", "framing", "roofStructure", "roofing", "siding", "openings", "interior"];
+export const ALL_LAYERS: Layer[] = ["slab", "foundation", "framing", "roofStructure", "roofing", "siding", "openings", "interior", "electrical"];
 
 export const LAYER_LABEL: Record<Layer, string> = {
   slab: "Slab",
@@ -15,23 +15,47 @@ export const LAYER_LABEL: Record<Layer, string> = {
   roofing: "Roofing",
   siding: "Siding",
   openings: "Doors & windows",
-  interior: "Pens & partitions",
+  interior: "Stalls & rooms",
+  electrical: "Electrical",
 };
 
 const PRESET_LAYERS: Record<ViewPreset, Layer[]> = {
-  exterior: ["slab", "roofing", "siding", "openings", "interior"],
-  framing: ["slab", "foundation", "framing", "roofStructure", "interior"],
-  dollhouse: ["slab", "framing", "siding", "openings", "interior"],
-  interior: ["slab", "framing", "roofStructure", "siding", "openings", "interior"],
-  plan: ["slab", "framing", "siding", "openings", "interior"],
+  exterior: ["slab", "roofing", "siding", "openings", "interior", "electrical"],
+  framing: ["slab", "foundation", "framing", "roofStructure", "interior", "electrical"],
+  dollhouse: ["slab", "framing", "siding", "openings", "interior", "electrical"],
+  interior: ["slab", "framing", "roofStructure", "siding", "openings", "interior", "electrical"],
+  plan: ["slab", "framing", "siding", "openings", "interior", "electrical"],
 };
+
+/** Plain-English names for the 3D presets (UX audit §4). */
+export const PRESET_LABEL: Record<ViewPreset, string> = { exterior: "Outside", framing: "Framing", dollhouse: "Cutaway", interior: "Inside", plan: "Plan" };
+
+/** Editor steps (ADR-0012): the rail walks through them; each shows one dock panel and its own tools. */
+export type Step = "project" | "layout" | "building" | "outside" | "electrical" | "check" | "plans";
+export const STEPS: { id: Step; label: string; hint: string }[] = [
+  { id: "project", label: "Project", hint: "Name, animals, site" },
+  { id: "layout", label: "Layout", hint: "Stalls, aisle, rooms, doors" },
+  { id: "building", label: "Building", hint: "Size, height, roof, frame" },
+  { id: "outside", label: "Outside", hint: "Doors, windows, lean-tos, concrete" },
+  { id: "electrical", label: "Electrical", hint: "Lights, outlets, panel" },
+  { id: "check", label: "Check", hint: "Problems and fixes" },
+  { id: "plans", label: "Plans", hint: "Blueprints, materials, cost" },
+];
+/** 3D preset that best shows each step's work. */
+const STEP_PRESET: Partial<Record<Step, ViewPreset>> = { layout: "dollhouse", building: "exterior", outside: "exterior", electrical: "dollhouse", check: "exterior" };
+
+export type StageView = "plan" | "both" | "3d";
+/** Default stage split per step (UX audit §2.2); the user's choice sticks per step. */
+export const STEP_STAGE_VIEW: Record<Step, StageView> = { project: "3d", layout: "both", building: "both", outside: "both", electrical: "both", check: "both", plans: "3d" };
+/** Plan share of the stage in "both", per step. */
+export const STEP_PLAN_PCT: Record<Step, number> = { project: 50, layout: 58, building: 42, outside: 50, electrical: 58, check: 50, plans: 50 };
 
 export type RenderMode = "realistic" | "white";
 
-export type PlanTool = "select" | "pen" | "aisle" | "room" | "door" | "window" | "leanTo" | "erase";
+export type PlanTool = "select" | "pen" | "aisle" | "room" | "door" | "window" | "leanTo" | "interiorDoor" | "fixture" | "erase";
 
 export interface ContextTarget {
-  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone" | "leanTo";
+  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone" | "leanTo" | "interiorDoor" | "fixture";
   /** Plan position under the cursor, feet (empty-space menus). */
   planX?: number;
   planY?: number;
@@ -62,10 +86,18 @@ export interface ViewState {
   /** Palette keys for the door / window tools (see lib/model/openings DOOR_PALETTE / WINDOW_PALETTE). */
   toolDoorKey: string;
   toolWindowKey: string;
+  /** Door type for the interior-door tool and fixture kind for the electrical tool. */
+  toolInteriorDoorType: string;
+  toolFixtureKind: string;
   /** Orthographic isometric camera (game-like) instead of perspective. */
   isometric: boolean;
   /** Grow the building automatically when a zone lands outside it (SPEC §18.2 "Just do it"). */
   autoGrow: boolean;
+  /** Which editor step is active and how the stage is split (per step). */
+  step: Step;
+  stageViews: Record<Step, StageView>;
+  /** Contextual status line: what the pointer is over, or what the armed tool will do. */
+  hint: string | null;
 
   setPreset: (p: ViewPreset) => void;
   toggleLayer: (l: Layer) => void;
@@ -83,6 +115,11 @@ export interface ViewState {
   setToolWindowKey: (k: string) => void;
   setAutoGrow: (v: boolean) => void;
   setIsometric: (v: boolean) => void;
+  setToolInteriorDoorType: (t: string) => void;
+  setToolFixtureKind: (k: string) => void;
+  setStep: (s: Step) => void;
+  setStageView: (v: StageView) => void;
+  setHint: (h: string | null) => void;
 }
 
 export const useViewStore = create<ViewState>()((set) => ({
@@ -100,6 +137,11 @@ export const useViewStore = create<ViewState>()((set) => ({
   toolWindowKey: "w34",
   autoGrow: true,
   isometric: false,
+  toolInteriorDoorType: "stallSlide",
+  toolFixtureKind: "light",
+  step: "layout",
+  stageViews: { ...STEP_STAGE_VIEW },
+  hint: null,
 
   setPreset: (preset) =>
     set({
@@ -128,4 +170,23 @@ export const useViewStore = create<ViewState>()((set) => ({
   setToolWindowKey: (toolWindowKey) => set({ toolWindowKey, tool: "window" }),
   setAutoGrow: (autoGrow) => set({ autoGrow }),
   setIsometric: (isometric) => set({ isometric }),
+  setToolInteriorDoorType: (toolInteriorDoorType) => set({ toolInteriorDoorType, tool: "interiorDoor" }),
+  setToolFixtureKind: (toolFixtureKind) => set({ toolFixtureKind, tool: "fixture" }),
+  setStep: (step) =>
+    set((s) => {
+      const preset = STEP_PRESET[step];
+      return {
+        step,
+        tool: "select",
+        contextMenu: null,
+        ...(preset && preset !== s.preset ? { preset, visibleLayers: new Set(PRESET_LAYERS[preset]), cutHeightFt: preset === "dollhouse" ? 4 : null } : {}),
+      };
+    }),
+  setStageView: (v) => set((s) => ({ stageViews: { ...s.stageViews, [s.step]: v } })),
+  setHint: (hint) => set((s) => (s.hint === hint ? {} : { hint })),
 }));
+
+/** Stage split for the active step. */
+export function selectStageView(s: ViewState): StageView {
+  return s.stageViews[s.step];
+}

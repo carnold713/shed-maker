@@ -1,14 +1,10 @@
 "use client";
 
 import { useProjectStore } from "@/lib/store/useProjectStore";
-import { useDerived } from "@/lib/store/useDerived";
-import { getRule, type Finding } from "@/rules";
-import { Panel } from "@/components/ui/Panel";
-
-const tone = { error: "bg-red-50 text-red-800 border-red-200", warn: "bg-amber-50 text-amber-800 border-amber-200", info: "bg-sky-50 text-sky-800 border-sky-200" } as const;
+import type { Finding } from "@/rules";
 
 /** Maps a finding's `fix.command` to a store action (SPEC §7.7 `fix?`). */
-function runFix(f: Finding) {
+export function runFix(f: Finding) {
   const s = useProjectStore.getState();
   const args = f.fix?.args ?? {};
   switch (f.fix?.command) {
@@ -30,6 +26,20 @@ function runFix(f: Finding) {
       const ys = z.polygon.map((p) => p.y);
       return s.resizeZone(id, { x: Math.min(...xs), y: Math.min(...ys), w: Number(args.w), d: Number(args.d) }, true);
     }
+    case "autoPlacePanel":
+      return s.autoPlacePanel();
+    case "autoLightZone":
+      return s.autoLightZone(String(args.id));
+    case "setServiceAmps":
+      return s.setElectricalService({ amps: Number(args.amps) });
+    case "setFixtureMount":
+      return s.updateFixture(String(args.id), { mountFt: Number(args.mountFt) });
+    case "addFixtureAt":
+      return s.addFixture({ kind: args.kind as "switch", x: Number(args.x), y: Number(args.y), wallId: args.wallId ? String(args.wallId) : undefined });
+    case "setInteriorDoorWidth":
+      return s.updateInteriorDoor(String(args.id), { widthFt: Number(args.widthFt) });
+    case "setAutoDoor":
+      return s.setAutoDoor(String(args.id), true);
     case "nudgeOpeningClear": {
       const id = String(args.id);
       const clear = Number(args.clearanceFt ?? 1);
@@ -44,39 +54,3 @@ function runFix(f: Finding) {
   }
 }
 
-/** Live validation (SPEC §7.7). Each finding shows its rule + citation on hover and selects its entity on click. */
-export function CheckPanel() {
-  const { report } = useDerived();
-  const select = useProjectStore((s) => s.select);
-  if (!report) return null;
-
-  return (
-    <Panel title={`Check · ${report.errors} errors · ${report.warnings} warnings`}>
-      {report.findings.length === 0 ? (
-        <p className="text-sm text-muted">No findings.</p>
-      ) : (
-        <ul className="flex flex-col gap-2" data-testid="check-findings">
-          {report.findings.map((f, i) => {
-            const rule = getRule(f.rule);
-            return (
-              <li key={i} className={`rounded-md border px-2.5 py-2 text-xs ${tone[f.severity]}`} title={rule ? `${rule.id} · ${rule.source}\n${rule.rationale}` : f.rule}>
-                <button className="text-left" onClick={() => f.entityIds[0] && f.entityIds[0] !== "site" && select(f.entityIds[0])}>
-                  {f.message}
-                </button>
-                <div className="mt-1 flex items-center justify-between font-mono opacity-70">
-                  <span>{rule?.source ?? f.rule}</span>
-                  {f.fix ? (
-                    <button className="underline" onClick={() => runFix(f)}>
-                      {f.fix.label}
-                    </button>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <p className="mt-3 text-[11px] leading-snug text-muted">{report.constructionReady ? "No blocking errors." : "Errors block construction-ready status, not saving."}</p>
-    </Panel>
-  );
-}

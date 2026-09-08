@@ -17,7 +17,7 @@ export type FramingKind =
   | "stud"
   | "kneeBrace";
 
-export type Layer = "slab" | "foundation" | "framing" | "roofStructure" | "roofing" | "siding" | "openings" | "interior";
+export type Layer = "slab" | "foundation" | "framing" | "roofStructure" | "roofing" | "siding" | "openings" | "interior" | "electrical";
 
 /**
  * A single framing member: a box in world space with its lumber identity.

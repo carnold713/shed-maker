@@ -18,19 +18,19 @@ export interface Rect {
 }
 
 export const ZONE_TYPE_LABEL: Record<ZoneType, string> = {
-  pen: "Pen / stall",
+  pen: "Stall",
   aisle: "Aisle",
   tack: "Tack room",
   feed: "Feed room",
-  hay: "Hay / bedding",
+  hay: "Hay & bedding",
   wash: "Wash bay",
   equipment: "Equipment bay",
   office: "Office",
   kidding: "Kidding pen",
-  milking: "Milking",
-  utility: "Utility",
+  milking: "Milking parlour",
+  utility: "Utility room",
   restroom: "Restroom",
-  open: "Open",
+  open: "Open area",
 };
 
 export const ZONE_COLORS: Record<ZoneType, string> = {
@@ -137,6 +137,16 @@ function touch(model: BuildingModel): BuildingModel {
   return { ...model, meta: { ...model.meta, updatedAt: new Date().toISOString() } };
 }
 
+/** Keep interior doors inside their edge after a resize (drop any that no longer fit). */
+export function clampDoorsToRect(doors: Zone["doors"], r: Rect): Zone["doors"] {
+  return doors.flatMap((d) => {
+    const edgeLen = d.side === "n" || d.side === "s" ? r.w : r.d;
+    if (d.widthFt > edgeLen - 0.5) return [];
+    const offsetFt = Math.min(Math.max(0.25, d.offsetFt), edgeLen - d.widthFt - 0.25);
+    return [offsetFt === d.offsetFt ? d : { ...d, offsetFt }];
+  });
+}
+
 export function defaultZoneName(model: BuildingModel, type: ZoneType, species?: Species): string {
   const same = model.zones.filter((z) => z.type === type && (type !== "pen" || z.species === species)).length + 1;
   if (type === "pen") return `${species ? SPECIES_PRESETS[species].label : "Pen"} ${same}`;
@@ -171,6 +181,8 @@ export function addZone(model: BuildingModel, input: AddZoneInput): BuildingMode
     polygon: rectPolygon(rect),
     flooring: input.type === "pen" || input.type === "kidding" ? "concreteMats" : input.type === "wash" ? "concrete" : "concrete",
     outsideAccess: input.outsideAccess ?? false,
+    doors: [],
+    autoDoor: true,
   };
   let next = touch({ ...model, zones: [...model.zones, zone] });
   if (input.autoGrow !== false) next = growToFitZones(next);
@@ -183,7 +195,10 @@ export function updateZone(model: BuildingModel, id: string, patch: Partial<Omit
   const cur = model.zones[idx];
   const { rect, autoGrow, ...rest } = patch;
   const merged: Zone = { ...cur, ...rest };
-  if (rect) merged.polygon = rectPolygon(snapRect(model, rect, id));
+  if (rect) {
+    merged.polygon = rectPolygon(snapRect(model, rect, id));
+    merged.doors = clampDoorsToRect(merged.doors, zoneRect(merged));
+  }
   if (merged.type !== "pen" && merged.type !== "kidding") merged.species = undefined;
   else if (!merged.species) merged.species = "horse";
   const unchanged = JSON.stringify(merged) === JSON.stringify(cur);

@@ -11,7 +11,8 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
  * fill, and ACES tone mapping. Aims for the "clean render" look rather than
  * a flat lit box.
  */
-export const GROUND_SIZE_FT = 160;
+/** Shadow coverage around the building, feet; beyond it surfaces are simply lit. */
+export const SHADOW_EXTENT_FT = 110;
 
 export function Lighting({ center }: { center: [number, number, number]; radius?: number }) {
   const gl = useThree((s) => s.gl);
@@ -61,7 +62,7 @@ export function Lighting({ center }: { center: [number, number, number]; radius?
   const [cx, , cz] = center;
   // The shadow frustum must cover everything that receives shadows (the whole ground plate),
   // otherwise the map's edge texels smear across the uncovered area.
-  const shadowExtent = GROUND_SIZE_FT / 2 + 12;
+  const shadowExtent = SHADOW_EXTENT_FT;
   const keyRef = useRef<THREE.DirectionalLight>(null);
 
   // The WebGL shadow-map code rebuilds the shadow camera's projection when it creates the map;

@@ -1,4 +1,4 @@
-import { test as base } from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
 
 /**
  * Editor specs run on the WebGL renderer: headless Chromium has no real
@@ -18,4 +18,25 @@ export const test = base.extend({
     await run(page);
   },
 });
-export { expect } from "@playwright/test";
+export { expect };
+
+/** Home → New barn → "Start empty": the 24' × 36' default barn, landing on the Layout step. */
+export async function newEmptyBarn(page: Page) {
+  await page.goto("/");
+  await page.getByTestId("new-barn").first().click();
+  await page.waitForURL(/\/new$/);
+  await page.getByTestId("wizard-empty").click();
+  await page.waitForURL(/\/p\/[^/]+/);
+  await expect(page.getByTestId("plan-svg")).toBeVisible();
+}
+
+export async function goStep(page: Page, step: string) {
+  await page.getByTestId(`rail-step-${step}`).click();
+}
+
+/** Open the View menu and pick a 3D preset by its testid. */
+export async function pickView(page: Page, id: "view-outside" | "view-inside" | "view-framing" | "view-cutaway") {
+  await page.getByTestId("view-menu").click();
+  await page.getByTestId(id).click();
+  await page.keyboard.press("Escape");
+}

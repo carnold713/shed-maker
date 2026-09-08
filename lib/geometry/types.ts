@@ -26,7 +26,10 @@ export type BoxKind =
   | "gravel"
   | "apron"
   | "leanToSkin"
-  | "coil";
+  | "coil"
+  | "track"
+  | "fixture"
+  | "wire";
 
 export interface BoxMember {
   id: string;
@@ -43,7 +46,7 @@ export interface BoxMember {
   /** For framing boxes: the framing member id (same as `id`). */
   ruleRef?: string;
   /** Rendering hint: 'siding' | 'roofing' | 'concrete' | 'wood' | 'glass' | 'door' | 'trim'. */
-  material: "siding" | "roofing" | "concrete" | "wood" | "ptWood" | "glass" | "door" | "trim" | "grille" | "mats" | "gravel" | "dirt" | "floorWood";
+  material: "siding" | "roofing" | "concrete" | "wood" | "ptWood" | "glass" | "door" | "trim" | "grille" | "mats" | "gravel" | "dirt" | "floorWood" | "fixture" | "device" | "wire";
 }
 
 export interface PolygonMember {

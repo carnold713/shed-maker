@@ -6,14 +6,17 @@ import { useViewStore } from "@/lib/store/useViewStore";
 import { useDerived } from "@/lib/store/useDerived";
 import { wallFrame } from "@/lib/framing/wallFrame";
 import { formatFtIn } from "@/lib/units";
-import type { Opening, Species, Wall, ZoneType } from "@/lib/model/schema";
-import { defaultPenSize, ROOM_PRESETS, snapCoordinate, zoneRect, type Rect } from "@/lib/model/zones";
-import { derivePartitions } from "@/lib/interior/partitions";
+import type { FixtureKind, InteriorDoorType, Opening, Species, Wall, ZoneType } from "@/lib/model/schema";
+import { defaultPenSize, ROOM_PRESETS, snapCoordinate, zoneRect, ZONE_TYPE_LABEL, type Rect } from "@/lib/model/zones";
+import { derivePartitions, type Partition } from "@/lib/interior/partitions";
 import { ZoneLayer, resizeByHandle, zoneFill, type Handle } from "./ZoneLayer";
-import { ToolPalette } from "./ToolPalette";
+import { FixtureLayer } from "./FixtureLayer";
 import { SPECIES_PRESETS } from "@/rules/animals/presets";
-import { DOOR_PALETTE, WINDOW_PALETTE, needsApron } from "@/lib/model/openings";
+import { DOOR_PALETTE, WINDOW_PALETTE, OPENING_PRESETS, needsApron } from "@/lib/model/openings";
 import { leanToPolygon } from "@/lib/model/leanTos";
+import { INTERIOR_DOOR_PRESETS, defaultInteriorDoorSize } from "@/lib/model/interiorDoors";
+import { FIXTURE_PRESETS } from "@/lib/model/electrical";
+import { deriveElectrical } from "@/lib/electrical/derive";
 
 /**
  * Top-down plan in SVG (SPEC §3.4, §21). Plan +y is north and renders UP the
@@ -40,7 +43,23 @@ export function PlanView() {
   const removeLeanTo = useProjectStore((s) => s.removeLeanTo);
   const doorKey = useViewStore((s) => s.toolDoorKey);
   const windowKey = useViewStore((s) => s.toolWindowKey);
+  const setTool = useViewStore((s) => s.setTool);
+  const setHint = useViewStore((s) => s.setHint);
+  const step = useViewStore((s) => s.step);
+  const toolInteriorDoorType = useViewStore((s) => s.toolInteriorDoorType) as InteriorDoorType;
+  const toolFixtureKind = useViewStore((s) => s.toolFixtureKind) as FixtureKind;
+  const addInteriorDoor = useProjectStore((s) => s.addInteriorDoor);
+  const removeInteriorDoor = useProjectStore((s) => s.removeInteriorDoor);
+  const moveInteriorDoor = useProjectStore((s) => s.moveInteriorDoor);
+  const setAutoDoor = useProjectStore((s) => s.setAutoDoor);
+  const addFixture = useProjectStore((s) => s.addFixture);
+  const removeFixture = useProjectStore((s) => s.removeFixture);
+  const moveFixture = useProjectStore((s) => s.moveFixture);
   const [wallGhost, setWallGhost] = useState<{ wallId: string; u: number; w: number } | null>(null);
+  const [doorGhost, setDoorGhost] = useState<{ partition: Partition; u: number; w: number; zoneId: string; side: "n" | "s" | "e" | "w"; offsetFt: number } | null>(null);
+  const [fixtureGhost, setFixtureGhost] = useState<{ x: number; y: number; onWall: boolean } | null>(null);
+  const electrical = useMemo(() => (model ? deriveElectrical(model) : null), [model]);
+  const showElectrical = step === "electrical" || (model?.electrical.fixtures.length ?? 0) > 0;
   const moveZoneAction = useProjectStore((s) => s.moveZone);
   const resizeZoneAction = useProjectStore((s) => s.resizeZone);
   const removeZone = useProjectStore((s) => s.removeZone);
@@ -89,7 +108,9 @@ export function PlanView() {
     | { kind: "opening"; id: string; wallId: string; grabOffsetFt: number }
     | { kind: "zoneMove"; id: string; grabX: number; grabY: number; w: number; d: number; moved: boolean }
     | { kind: "zoneResize"; id: string; handle: Handle; start: Rect }
-    | { kind: "draw"; x0: number; y0: number; moved: boolean };
+    | { kind: "draw"; x0: number; y0: number; moved: boolean }
+    | { kind: "doorMove"; id: string; vertical: boolean; origin: number; grabFt: number }
+    | { kind: "fixtureMove"; id: string; grabX: number; grabY: number };
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const endDrag = useRef<(() => void) | null>(null);
@@ -130,6 +151,20 @@ export function PlanView() {
       setCursorFt(p);
       const d = dragRef.current;
       if (!d) {
+        if (tool === "interiorDoor") {
+          setDoorGhost(doorGhostAt(model, partitions, p.x, p.y, toolInteriorDoorType));
+          return;
+        }
+        if (tool === "fixture") {
+          const preset = FIXTURE_PRESETS[toolFixtureKind];
+          const hit = preset.wall ? nearestWall(model, p.x, p.y) : null;
+          if (hit && hit.dist <= 3) {
+            const f = wallFrame(hit.wall);
+            const u = Math.round(hit.u * 2) / 2;
+            setFixtureGhost({ x: hit.wall.start.x + f.dir.x * u, y: hit.wall.start.y + f.dir.y * u, onWall: true });
+          } else setFixtureGhost({ x: Math.round(p.x * 2) / 2, y: Math.round(p.y * 2) / 2, onWall: false });
+          return;
+        }
         if (tool === "door" || tool === "window") {
           const hit = nearestWall(model, p.x, p.y);
           const entry = tool === "door" ? DOOR_PALETTE.find((e) => e.key === doorKey) : WINDOW_PALETTE.find((e) => e.key === windowKey);
@@ -164,6 +199,15 @@ export function PlanView() {
         resizeZoneAction(d.id, r, autoGrow);
         return;
       }
+      if (d.kind === "doorMove") {
+        const along = d.vertical ? p.y : p.x;
+        moveInteriorDoor(d.id, along - d.origin - d.grabFt);
+        return;
+      }
+      if (d.kind === "fixtureMove") {
+        moveFixture(d.id, p.x - d.grabX, p.y - d.grabY);
+        return;
+      }
       if (d.kind === "edge") {
         if (d.edge === "e") setFootprintRect(Math.round(p.x), D);
         else setFootprintRect(W, Math.round(p.y));
@@ -177,16 +221,44 @@ export function PlanView() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [model, toPlan, setFootprintRect, moveOpening, D, W, tool, toolSpecies, toolRoomType, autoGrow, moveZoneAction, resizeZoneAction, doorKey, windowKey],
+    [model, toPlan, setFootprintRect, moveOpening, D, W, tool, toolSpecies, toolRoomType, autoGrow, moveZoneAction, resizeZoneAction, doorKey, windowKey, partitions, toolInteriorDoorType, toolFixtureKind, moveInteriorDoor, moveFixture],
   );
 
-  /** Place the active door/window palette entry on the wall under the cursor. */
+  /** Place the active door/window palette entry on the wall under the cursor; one placement returns to Select (UX audit §3.7). */
   function placeOnWall(wallId: string, u: number) {
     const entry = tool === "door" ? DOOR_PALETTE.find((e) => e.key === doorKey) : WINDOW_PALETTE.find((e) => e.key === windowKey);
     if (!entry) return;
     const id = addOpening({ wallId, type: entry.type, centerFt: u, widthFt: entry.widthFt, heightFt: entry.heightFt, sillFt: entry.sillFt, swing: entry.swing, variant: entry.variant });
-    if (id) select(id);
+    if (id) {
+      select(id);
+      setTool("select");
+      setWallGhost(null);
+    }
   }
+
+  /** Put a fixture at a plan point (wall devices snap in the command). */
+  function placeFixture(x: number, y: number, wallId?: string) {
+    const id = addFixture({ kind: toolFixtureKind, x, y, wallId });
+    if (id) {
+      select(id);
+      setTool("select");
+      setFixtureGhost(null);
+    }
+  }
+
+  /** Add the ghosted interior door. */
+  function placeInteriorDoor() {
+    if (!doorGhost) return;
+    const id = addInteriorDoor({ zoneId: doorGhost.zoneId, side: doorGhost.side, offsetFt: doorGhost.offsetFt, type: toolInteriorDoorType, widthFt: doorGhost.w });
+    if (id) {
+      select(id);
+      setTool("select");
+      setDoorGhost(null);
+    }
+  }
+
+  /** Hover line for the status bar: noun · fact · verb (UX audit §3.8). */
+  const hover = (text: string | null) => setHint(text);
 
   /** Preset size for the active stamp tool, [w, d] feet. */
   function toolSize(): [number, number] {
@@ -222,7 +294,6 @@ export function PlanView() {
 
   return (
     <div ref={wrapRef} className={`relative h-full w-full select-none overflow-hidden bg-[#faf8f4] ${tool === "erase" ? "cursor-not-allowed" : tool !== "select" ? "cursor-crosshair" : ""}`}>
-      <ToolPalette />
       <svg
         width={size.w}
         height={size.h}
@@ -237,6 +308,16 @@ export function PlanView() {
         onPointerDown={(e) => {
           if (e.button !== 0 || !model) return;
           const onEmpty = e.target === e.currentTarget || (e.target as Element).getAttribute("data-plan-bg") === "1";
+          if (tool === "fixture" && (onEmpty || (e.target as Element).closest("[data-zone-id]"))) {
+            const p = toPlan(e, e.currentTarget);
+            if (fixtureGhost) placeFixture(fixtureGhost.x, fixtureGhost.y);
+            else placeFixture(p.x, p.y);
+            return;
+          }
+          if (tool === "interiorDoor" && doorGhost) {
+            placeInteriorDoor();
+            return;
+          }
           if ((tool === "pen" || tool === "room" || tool === "aisle") && onEmpty) {
             e.currentTarget.setPointerCapture(e.pointerId);
             const p = toPlan(e, e.currentTarget);
@@ -311,8 +392,51 @@ export function PlanView() {
             select(z.id);
             openContextMenu({ kind: "zone", id: z.id, x: e.clientX, y: e.clientY, from: "plan" });
           }}
-          onHover={setHovered}
+          onHover={(id) => {
+            setHovered(id);
+            const z = id ? model.zones.find((zz) => zz.id === id) : null;
+            hover(z ? `${z.name} · ${ZONE_TYPE_LABEL[z.type]} · ${formatFtIn(zoneRect(z).w)} × ${formatFtIn(zoneRect(z).d)} · drag to move · right-click for more` : null);
+          }}
           onDoubleClick={(z) => select(z.id)}
+          onPointerDownDoor={(p, d, e) => {
+            if (e.button !== 0) return;
+            e.stopPropagation();
+            if (tool === "erase") {
+              if (d.auto) setAutoDoor(d.zoneId, false);
+              else removeInteriorDoor(d.id);
+              return;
+            }
+            if (tool !== "select") return;
+            if (d.auto) {
+              // The default door has no record yet: make it real so it can be moved and edited.
+              const vertical = Math.abs(p.x1 - p.x0) < 1e-9;
+              const z = model.zones.find((zz) => zz.id === d.zoneId)!;
+              const r = zoneRect(z);
+              const side = vertical ? (d.zoneSide === -1 ? "e" : "w") : d.zoneSide === -1 ? "n" : "s";
+              const id = addInteriorDoor({ zoneId: z.id, side, offsetFt: d.u + (vertical ? p.y0 - r.y : p.x0 - r.x), type: d.type, widthFt: d.widthFt, heightFt: d.heightFt });
+              if (id) select(id);
+              return;
+            }
+            (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+            select(d.id);
+            const pt = toPlan(e, (e.currentTarget as SVGElement).ownerSVGElement!);
+            const vertical = Math.abs(p.x1 - p.x0) < 1e-9;
+            const z = model.zones.find((zz) => zz.id === d.zoneId)!;
+            const r = zoneRect(z);
+            const origin = vertical ? r.y : r.x;
+            const doorStart = vertical ? d.y0 : d.x0;
+            beginDrag({ kind: "doorMove", id: d.id, vertical, origin, grabFt: (vertical ? pt.y : pt.x) - doorStart });
+          }}
+          onContextMenuDoor={(p, d, e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!d.auto) select(d.id);
+            openContextMenu({ kind: "interiorDoor", id: d.auto ? d.zoneId : d.id, x: e.clientX, y: e.clientY, from: "plan", planX: d.auto ? 1 : 0 });
+          }}
+          onHoverDoor={(p, d) => {
+            setHovered(d && !d.auto ? d.id : null);
+            hover(d ? `${INTERIOR_DOOR_PRESETS[d.type].label} · ${formatFtIn(d.widthFt)} wide${d.auto ? " · default door — click to make it editable" : " · drag along the wall · right-click for more"}` : null);
+          }}
         />
 
         {/* ghost for stamp/draw tools */}
@@ -412,9 +536,17 @@ export function PlanView() {
                   const p = toPlan(e, e.currentTarget.ownerSVGElement!);
                   const u = Math.max(0, Math.min(f.lengthFt, (p.x - w.start.x) * f.dir.x + (p.y - w.start.y) * f.dir.y));
                   if (tool === "door" || tool === "window") return placeOnWall(w.id, u);
+                  if (tool === "fixture") {
+                    const snapped = Math.round(u * 2) / 2;
+                    return placeFixture(w.start.x + f.dir.x * snapped, w.start.y + f.dir.y * snapped, w.id);
+                  }
+                  if (tool === "interiorDoor") return; // outside doors live in the Outside step
                   if (tool === "leanTo") {
                     const id = addLeanTo({ side: w.side! });
-                    if (id) select(id);
+                    if (id) {
+                      select(id);
+                      setTool("select");
+                    }
                     return;
                   }
                   select("footprint");
@@ -427,6 +559,8 @@ export function PlanView() {
                   select("footprint");
                   openContextMenu({ kind: "wall", id: w.id, uFt: Math.max(0, Math.min(f.lengthFt, u)), x: e.clientX, y: e.clientY, from: "plan" });
                 }}
+                onMouseEnter={() => hover(`${{ n: "North", s: "South", e: "East", w: "West" }[w.side ?? "s"]} wall · ${formatFtIn(f.lengthFt)} · right-click to add a door or window`)}
+                onMouseLeave={() => hover(null)}
                 data-testid={`plan-wall-${w.side}`}
               >
                 {/* fat invisible hit area (a polygon so it has a real bounding box) */}
@@ -469,6 +603,57 @@ export function PlanView() {
           ))}
         </g>
 
+        {/* interior door ghost */}
+        {doorGhost && tool === "interiorDoor"
+          ? (() => {
+              const pp = doorGhost.partition;
+              const vertical = Math.abs(pp.x1 - pp.x0) < 1e-9;
+              const a = vertical ? { x: pp.x0, y: pp.y0 + doorGhost.u } : { x: pp.x0 + doorGhost.u, y: pp.y0 };
+              const b = vertical ? { x: pp.x0, y: pp.y0 + doorGhost.u + doorGhost.w } : { x: pp.x0 + doorGhost.u + doorGhost.w, y: pp.y0 };
+              return <line x1={px(a.x)} y1={py(a.y)} x2={px(b.x)} y2={py(b.y)} stroke="#b5532a" strokeWidth={Math.max(6, 0.6 * scale)} strokeLinecap="round" opacity={0.6} pointerEvents="none" />;
+            })()
+          : null}
+
+        {/* fixture ghost */}
+        {fixtureGhost && tool === "fixture" ? <circle cx={px(fixtureGhost.x)} cy={py(fixtureGhost.y)} r={Math.max(6, scale * 0.6)} fill="#b5532a" fillOpacity={0.35} stroke="#b5532a" strokeDasharray="3 2" pointerEvents="none" /> : null}
+
+        {/* electrical */}
+        {showElectrical && electrical ? (
+          <FixtureLayer
+            fixtures={model.electrical.fixtures}
+            derived={electrical}
+            px={px}
+            py={py}
+            scale={scale}
+            selection={selection}
+            hovered={hovered}
+            showRoutes={step === "electrical" || model.electrical.fixtures.some((f) => f.id === selection)}
+            onPointerDown={(f, e) => {
+              if (e.button !== 0) return;
+              e.stopPropagation();
+              if (tool === "erase") {
+                removeFixture(f.id);
+                return;
+              }
+              if (tool !== "select") return;
+              (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+              select(f.id);
+              const pt = toPlan(e, (e.currentTarget as SVGElement).ownerSVGElement!);
+              beginDrag({ kind: "fixtureMove", id: f.id, grabX: pt.x - f.x, grabY: pt.y - f.y });
+            }}
+            onContextMenu={(f, e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              select(f.id);
+              openContextMenu({ kind: "fixture", id: f.id, x: e.clientX, y: e.clientY, from: "plan" });
+            }}
+            onHover={(f) => {
+              setHovered(f ? f.id : null);
+              hover(f ? `${f.label ?? FIXTURE_PRESETS[f.kind].short} · ${f.mountFt}' up${f.watts ? ` · ${f.watts} W` : ""} · drag to move · right-click for more` : null);
+            }}
+          />
+        ) : null}
+
         {/* openings */}
         {model.openings.map((o) => {
           const w = model.walls.find((x) => x.id === o.wallId);
@@ -504,7 +689,10 @@ export function PlanView() {
                 select(o.id);
                 openContextMenu({ kind: "opening", id: o.id, x: e.clientX, y: e.clientY, from: "plan" });
               }}
-              onHover={(h) => setHovered(h ? o.id : null)}
+              onHover={(h) => {
+                setHovered(h ? o.id : null);
+                hover(h ? `${OPENING_PRESETS[o.type].label} · ${formatFtIn(o.widthFt)} × ${formatFtIn(o.heightFt)} · drag along the wall · right-click for more` : null);
+              }}
             />
           );
         })}
@@ -522,8 +710,8 @@ export function PlanView() {
         <Dimension x1={px(0)} y1={py(0) + 26} x2={px(W)} y2={py(0) + 26} label={formatFtIn(W)} />
         <Dimension x1={px(W) + 26} y1={py(0)} x2={px(W) + 26} y2={py(D)} label={formatFtIn(D)} vertical />
 
-        {/* footprint drag handles */}
-        <g>
+        {/* footprint drag handles (hidden while a placement tool is armed so they never steal the click) */}
+        <g style={{ display: tool === "select" ? undefined : "none" }}>
           <rect
             x={px(W) - 5}
             y={py(D / 2) - 14}
@@ -566,9 +754,8 @@ export function PlanView() {
           </text>
         </g>
       </svg>
-      <div className="pointer-events-none absolute bottom-2 left-3 font-mono text-[11px] text-muted">
-        {formatFtIn(W)} × {formatFtIn(D)} · {W * D} sq ft · {posts.length} posts · {bay}&apos; bays · {model.zones.length} zones
-        {cursorFt ? ` · ${formatFtIn(Math.max(0, cursorFt.x))}, ${formatFtIn(Math.max(0, cursorFt.y))}` : ""}
+      <div className="pointer-events-none absolute bottom-1.5 right-3 font-mono text-[10.5px] text-muted/80">
+        {cursorFt ? `${formatFtIn(Math.max(0, cursorFt.x))}, ${formatFtIn(Math.max(0, cursorFt.y))}` : ""}
         {drag?.kind === "opening" ? " · Shift = 1' snap" : ""}
       </div>
     </div>
@@ -690,6 +877,34 @@ function OpeningSymbol({
       <title>{`${o.type} ${formatFtIn(o.widthFt)} × ${formatFtIn(o.heightFt)} @ ${formatFtIn(o.offsetFt)}`}</title>
     </g>
   );
+}
+
+/** Where an interior door would land: nearest partition within 2', snapped to 6", serving the stall/room (not the aisle). */
+function doorGhostAt(model: NonNullable<ReturnType<typeof useProjectStore.getState>["model"]>, partitions: Partition[], x: number, y: number, type: InteriorDoorType) {
+  let best: { p: Partition; u: number; dist: number; sideSign: -1 | 1 } | null = null;
+  for (const p of partitions) {
+    const vertical = Math.abs(p.x1 - p.x0) < 1e-9;
+    const u = vertical ? Math.max(0, Math.min(p.lengthFt, y - p.y0)) : Math.max(0, Math.min(p.lengthFt, x - p.x0));
+    const dist = vertical ? Math.abs(x - p.x0) : Math.abs(y - p.y0);
+    const sideSign: -1 | 1 = (vertical ? x - p.x0 : y - p.y0) >= 0 ? 1 : -1;
+    if (dist <= 2 && (!best || dist < best.dist)) best = { p, u, dist, sideSign };
+  }
+  if (!best) return null;
+  const { p, sideSign } = best;
+  const [lower, upper] = p.zones;
+  const isServed = (z: typeof lower) => !!z && z.type !== "aisle" && z.type !== "open";
+  let zone = isServed(lower) && isServed(upper) ? (sideSign === -1 ? lower : upper) : isServed(lower) ? lower : isServed(upper) ? upper : null;
+  if (!zone) zone = lower ?? upper;
+  if (!zone) return null;
+  const vertical = Math.abs(p.x1 - p.x0) < 1e-9;
+  const zoneSide: -1 | 1 = lower?.id === zone.id ? -1 : 1;
+  const side = vertical ? (zoneSide === -1 ? "e" : "w") : zoneSide === -1 ? "n" : "s";
+  const w = Math.min(defaultInteriorDoorSize(type, zone.species).widthFt, Math.max(1.5, p.lengthFt - 0.5));
+  const u = Math.round((best.u - w / 2) * 2) / 2;
+  const uc = Math.max(0.25, Math.min(p.lengthFt - w - 0.25, u));
+  const r = zoneRect(zone);
+  const offsetFt = uc + (vertical ? p.y0 - r.y : p.x0 - r.x);
+  return { partition: p, u: uc, w, zoneId: zone.id, side: side as "n" | "s" | "e" | "w", offsetFt };
 }
 
 /** Nearest exterior wall to a plan point, with the distance and the position along it. */

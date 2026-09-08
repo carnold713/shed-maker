@@ -284,6 +284,26 @@ export const Species = z.enum([
 ]);
 export type Species = z.infer<typeof Species>;
 
+/** Doors in interior partitions (stall fronts, room doors) — SPEC §24, ADR-0014. */
+export const InteriorDoorType = z.enum(["stallSlide", "stallHinged", "dutch", "woodHinged", "manDoor", "cased"]);
+export type InteriorDoorType = z.infer<typeof InteriorDoorType>;
+
+export const InteriorDoor = z.object({
+  id: Id,
+  type: InteriorDoorType,
+  /** Which edge of the zone the door sits in. */
+  side: z.enum(["n", "s", "e", "w"]),
+  /** From the edge's west (or south) end to the near jamb, feet. */
+  offsetFt: z.number().nonnegative(),
+  widthFt: z.number().positive(),
+  heightFt: z.number().positive(),
+  /** Hinged doors swing into ("in") or out of the zone; sliders slide left/right seen from the aisle. */
+  swing: z.enum(["in", "out", "slideLeft", "slideRight"]).default("out"),
+  /** Hinge jamb for hinged doors, seen from outside the zone. */
+  hinge: z.enum(["left", "right"]).default("left"),
+});
+export type InteriorDoor = z.infer<typeof InteriorDoor>;
+
 export const Zone = z.object({
   id: Id,
   name: z.string(),
@@ -296,6 +316,9 @@ export const Zone = z.object({
     .default("concrete"),
   /** Pen opens to the outside through a Dutch door on the exterior wall it touches (SPEC §18.2). */
   outsideAccess: z.boolean().default(false),
+  /** Explicit doors in this zone's partitions. Empty + `autoDoor` = one default door facing the aisle. */
+  doors: z.array(InteriorDoor).default([]),
+  autoDoor: z.boolean().default(true),
 });
 export type Zone = z.infer<typeof Zone>;
 
@@ -328,6 +351,47 @@ export const Override = z.object({
 });
 export type Override = z.infer<typeof Override>;
 
+// ---- Electrical (SPEC §27, ADR-0013): fixtures are placed; circuits, loads,
+// wire sizes and routes are derived in lib/electrical.
+
+export const FixtureKind = z.enum(["light", "floodlight", "outlet", "switch", "panel", "fan", "waterer", "heater"]);
+export type FixtureKind = z.infer<typeof FixtureKind>;
+
+export const ElectricalFixture = z.object({
+  id: Id,
+  kind: FixtureKind,
+  /** Plan position of the device, feet (ADR-0005). Wall devices sit on the wall line. */
+  x: z.number(),
+  y: z.number(),
+  /** Mounting height above finished floor, feet (centre of the device). */
+  mountFt: z.number().nonnegative(),
+  /** Nameplate load, watts. Switches and the panel carry none. */
+  watts: z.number().nonnegative().default(0),
+  volts: z.union([z.literal(120), z.literal(240)]).default(120),
+  /** Wall the device mounts on, when wall-mounted (outlets, switches, panel, floodlights). */
+  wallId: Id.optional(),
+  label: z.string().optional(),
+  /** Light fixtures: the switch that controls them. */
+  switchId: Id.optional(),
+});
+export type ElectricalFixture = z.infer<typeof ElectricalFixture>;
+
+export const ElectricalService = z.object({
+  /** Sub-panel rating fed from the house / meter, amps at 240 V single-phase. */
+  amps: z.number().int().positive().default(100),
+  /** One-way feeder length from the source to the barn panel, feet (voltage drop). */
+  feederLengthFt: z.number().nonnegative().default(100),
+  feedFrom: z.enum(["housePanel", "meter"]).default("housePanel"),
+});
+
+export const Electrical = z.object({
+  service: ElectricalService.prefault({}),
+  /** Wiring method inside the barn (NEC 547.5(A)). */
+  wiring: z.enum(["pvcConduit", "ufCable", "mcCable"]).default("pvcConduit"),
+  fixtures: z.array(ElectricalFixture).default([]),
+});
+export type Electrical = z.infer<typeof Electrical>;
+
 export const Meta = z.object({
   name: z.string().min(1),
   notes: z.string().optional(),
@@ -350,8 +414,11 @@ export const BuildingModel = z.object({
   foundation: Foundation.prefault({}),
   zones: z.array(Zone).default([]),
   fixtures: z.array(Fixture).default([]),
+  electrical: Electrical.prefault({}),
   materials: MaterialChoices.prefault({}),
   overrides: z.array(Override).default([]),
+  /** Per-project unit-cost overrides keyed by price sku (SPEC §7.8). */
+  priceOverrides: z.record(z.string(), z.number().nonnegative()).default({}),
   meta: Meta,
 });
 export type BuildingModel = z.infer<typeof BuildingModel>;

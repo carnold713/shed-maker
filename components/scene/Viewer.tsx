@@ -5,23 +5,15 @@ import { OrbitControls, OrthographicCamera } from "@react-three/drei";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useProjectStore } from "@/lib/store/useProjectStore";
-import { useViewStore, ALL_LAYERS, LAYER_LABEL, type ViewPreset } from "@/lib/store/useViewStore";
+import { useViewStore } from "@/lib/store/useViewStore";
 import { useDerived } from "@/lib/store/useDerived";
 import { BuildingScene } from "./BuildingScene";
-import { FitCamera } from "./FitCamera";
+import { FitCamera, CAMERA_FAR_FT, CAMERA_NEAR_FT } from "./FitCamera";
 import { Ground } from "./Ground";
-import { Lighting, GROUND_SIZE_FT } from "./Lighting";
+import { Lighting } from "./Lighting";
 import { createRenderer } from "./renderer";
 import { ClipGroup } from "./ClipGroup";
 import { PostFX } from "./PostFX";
-import { formatFtIn } from "@/lib/units";
-
-const PRESETS: { id: ViewPreset; label: string }[] = [
-  { id: "exterior", label: "Exterior" },
-  { id: "framing", label: "Framing" },
-  { id: "dollhouse", label: "Dollhouse" },
-  { id: "interior", label: "Interior" },
-];
 
 /**
  * 3D viewer: exterior orbit, framing-only, dollhouse and interior presets,
@@ -31,16 +23,12 @@ export function Viewer() {
   const model = useProjectStore((s) => s.model);
   const { geometry } = useDerived();
   const preset = useViewStore((s) => s.preset);
-  const setPreset = useViewStore((s) => s.setPreset);
-  const visible = useViewStore((s) => s.visibleLayers);
-  const toggleLayer = useViewStore((s) => s.toggleLayer);
   const cut = useViewStore((s) => s.cutHeightFt);
-  const setCut = useViewStore((s) => s.setCutHeight);
+  const setHint = useViewStore((s) => s.setHint);
   const fitNonce = useViewStore((s) => s.fitNonce);
   const openContextMenu = useViewStore((s) => s.openContextMenu);
   const select = useProjectStore((s) => s.select);
   const iso = useViewStore((s) => s.isometric);
-  const setIso = useViewStore((s) => s.setIsometric);
   const glRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.Camera | null>(null);
@@ -73,11 +61,11 @@ export function Viewer() {
   const grade = -(model.foundation.slab.aboveGradeIn / 12);
 
   return (
-    <div className="relative h-full w-full" data-testid="viewer">
+    <div className="relative h-full w-full" data-testid="viewer" onPointerEnter={() => setHint("Drag to orbit · right-drag to pan · scroll to zoom · click anything for its details")} onPointerLeave={() => setHint(null)}>
       <Canvas
         frameloop="demand"
         shadows="soft"
-        camera={{ position: [cx + 60, 40, cz + 70], fov: 34, near: 0.1, far: 2000 }}
+        camera={{ position: [cx + 60, 40, cz + 70], fov: 34, near: CAMERA_NEAR_FT, far: CAMERA_FAR_FT }}
         dpr={[1, 2]}
         gl={createRenderer}
         onCreated={({ gl, scene, camera }) => {
@@ -98,59 +86,19 @@ export function Viewer() {
         onContextMenu={(e) => e.preventDefault()}
       >
         <color attach="background" args={["#f3f0ea"]} />
+        <fog attach="fog" args={["#f3f0ea", 140, 900]} />
         <Lighting center={[cx, 0, cz]} radius={radius} />
         <PostFX />
         {iso ? <OrthographicCamera makeDefault position={[cx + 80, 70, cz + 80]} zoom={8} near={-500} far={1000} /> : null}
         <FitCamera bounds={geometry.bounds} nonce={fitNonce} preset={preset} eaveFt={eave} iso={iso} />
         <ClipGroup planes={clippingPlanes}>
           <BuildingScene geometry={geometry} materials={model.materials} clippingPlanes={clippingPlanes} />
-          <Ground center={[cx, cz]} grade={grade} sizeFt={GROUND_SIZE_FT} clippingPlanes={clippingPlanes} />
+          <Ground center={[cx, cz]} grade={grade} clippingPlanes={clippingPlanes} />
         </ClipGroup>
         <OrbitControls maxPolarAngle={Math.PI / 2 - 0.02} minDistance={2} maxDistance={400} makeDefault mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />
         <ClipShadowFix />
       </Canvas>
 
-      {/* View presets */}
-      <div className="glass absolute left-3 top-32 flex items-center gap-1 p-1 text-xs" data-testid="view-presets">
-        {PRESETS.map((p) => (
-          <button key={p.id} onClick={() => setPreset(p.id)} aria-pressed={preset === p.id} className={`chip ${preset === p.id ? "chip-on" : ""}`}>
-            {p.label}
-          </button>
-        ))}
-        <span className="mx-1 h-4 w-px bg-border" />
-        <button onClick={() => setIso(!iso)} aria-pressed={iso} className={`chip ${iso ? "chip-on" : ""}`} title="Isometric camera (I)" data-testid="iso-toggle">
-          Iso
-        </button>
-      </div>
-
-      {/* Layers */}
-      <details className="glass absolute right-3 top-32 text-xs">
-        <summary className="cursor-pointer select-none px-2 py-1 text-muted">Layers</summary>
-        <ul className="px-2 pb-2">
-          {ALL_LAYERS.map((l) => (
-            <li key={l}>
-              <label className="flex cursor-pointer items-center gap-2 py-0.5">
-                <input type="checkbox" checked={visible.has(l)} onChange={() => toggleLayer(l)} />
-                {LAYER_LABEL[l]}
-              </label>
-            </li>
-          ))}
-        </ul>
-      </details>
-
-      {/* Cutaway */}
-      <div className="glass absolute bottom-8 left-3 flex items-center gap-2 px-2 py-1 text-xs">
-        <label className="flex items-center gap-1">
-          <input type="checkbox" checked={cut !== null} onChange={(e) => setCut(e.target.checked ? 4 : null)} data-testid="cut-toggle" />
-          Cut at
-        </label>
-        <input type="range" min={0.5} max={Math.ceil(geometry.ridgeHeightFt)} step={0.25} value={cut ?? 4} disabled={cut === null} onChange={(e) => setCut(Number(e.target.value))} className="w-28" />
-        <span className="w-12 font-mono">{formatFtIn(cut ?? 4)}</span>
-      </div>
-
-      <div className="pointer-events-none absolute bottom-2 left-3 font-mono text-[11px] text-muted">
-        drag orbit · right-drag pan · right-click for menu · ridge {formatFtIn(geometry.ridgeHeightFt)}
-      </div>
     </div>
   );
 }

@@ -21,7 +21,7 @@ const ft = (f: number, i = 0) => f + i / 12;
 export const OPENING_PRESETS: Record<OpeningType, OpeningPreset> = {
   manDoor: {
     type: "manDoor",
-    label: "Man door",
+    label: "Entry door",
     widthFt: 3,
     heightFt: ft(6, 8),
     sillFt: 0,
@@ -61,7 +61,7 @@ export const OPENING_PRESETS: Record<OpeningType, OpeningPreset> = {
   },
   slidingDoor: {
     type: "slidingDoor",
-    label: "Sliding barn door",
+    label: "Sliding door",
     widthFt: 8,
     heightFt: 8,
     sillFt: 0,
@@ -168,34 +168,34 @@ export interface PaletteEntry {
 const f = (a: number, b = 0) => a + b / 12;
 
 export const DOOR_PALETTE: PaletteEntry[] = [
-  { key: "man36", label: `Man 3'0"`, type: "manDoor", widthFt: 3, heightFt: f(6, 8) },
-  { key: "man32", label: `Man 2'8"`, type: "manDoor", widthFt: f(2, 8), heightFt: f(6, 8) },
-  { key: "manHL", label: "Man half-light", type: "manDoor", widthFt: 3, heightFt: f(6, 8), variant: "halfLight" },
-  { key: "dbl6", label: "Double 6'", type: "doubleDoor", widthFt: 6, heightFt: f(6, 8) },
-  { key: "dbl8", label: "Double 8'", type: "doubleDoor", widthFt: 8, heightFt: 7 },
-  { key: "dutch", label: "Dutch 4'", type: "dutchDoor", widthFt: 4, heightFt: 8 },
-  { key: "slide8", label: "Sliding 8×8", type: "slidingDoor", widthFt: 8, heightFt: 8 },
-  { key: "slide10", label: "Sliding 10×10", type: "slidingDoor", widthFt: 10, heightFt: 10 },
-  { key: "slide12", label: "Sliding 12×12", type: "slidingDoor", widthFt: 12, heightFt: 12 },
-  { key: "slideBi16", label: "Bi-parting 16×12", type: "slidingDoor", widthFt: 16, heightFt: 12, swing: "biParting" },
-  { key: "oh9", label: "Overhead 9×8", type: "overheadDoor", widthFt: 9, heightFt: 8 },
-  { key: "oh10", label: "Overhead 10×10", type: "overheadDoor", widthFt: 10, heightFt: 10 },
-  { key: "oh12", label: "Overhead 12×12", type: "overheadDoor", widthFt: 12, heightFt: 12 },
-  { key: "oh16", label: "Overhead 16×12", type: "overheadDoor", widthFt: 16, heightFt: 12 },
-  { key: "ru10", label: "Roll-up 10×10", type: "rollUpDoor", widthFt: 10, heightFt: 10 },
-  { key: "ru12", label: "Roll-up 12×12", type: "rollUpDoor", widthFt: 12, heightFt: 12 },
+  { key: "man36", label: "Entry door 3'", type: "manDoor", widthFt: 3, heightFt: f(6, 8) },
+  { key: "man32", label: "Entry door 2'8\"", type: "manDoor", widthFt: f(2, 8), heightFt: f(6, 8) },
+  { key: "manHL", label: "Entry door with window", type: "manDoor", widthFt: 3, heightFt: f(6, 8), variant: "halfLight" },
+  { key: "dbl6", label: "Double door 6'", type: "doubleDoor", widthFt: 6, heightFt: f(6, 8) },
+  { key: "dbl8", label: "Double door 8'", type: "doubleDoor", widthFt: 8, heightFt: 7 },
+  { key: "dutch", label: "Dutch door 4' (stall)", type: "dutchDoor", widthFt: 4, heightFt: 8 },
+  { key: "slide8", label: "Sliding door 8' × 8'", type: "slidingDoor", widthFt: 8, heightFt: 8 },
+  { key: "slide10", label: "Sliding door 10' × 10'", type: "slidingDoor", widthFt: 10, heightFt: 10 },
+  { key: "slide12", label: "Sliding door 12' × 12'", type: "slidingDoor", widthFt: 12, heightFt: 12 },
+  { key: "slideBi16", label: "Sliding pair 16' × 12'", type: "slidingDoor", widthFt: 16, heightFt: 12, swing: "biParting" },
+  { key: "oh9", label: "Overhead door 9' × 8'", type: "overheadDoor", widthFt: 9, heightFt: 8 },
+  { key: "oh10", label: "Overhead door 10' × 10'", type: "overheadDoor", widthFt: 10, heightFt: 10 },
+  { key: "oh12", label: "Overhead door 12' × 12'", type: "overheadDoor", widthFt: 12, heightFt: 12 },
+  { key: "oh16", label: "Overhead door 16' × 12'", type: "overheadDoor", widthFt: 16, heightFt: 12 },
+  { key: "ru10", label: "Roll-up door 10' × 10'", type: "rollUpDoor", widthFt: 10, heightFt: 10 },
+  { key: "ru12", label: "Roll-up door 12' × 12'", type: "rollUpDoor", widthFt: 12, heightFt: 12 },
 ];
 
 export const WINDOW_PALETTE: PaletteEntry[] = [
-  { key: "w23", label: "2×3 slider", type: "window", widthFt: 2, heightFt: 3, sillFt: 4, variant: "slider" },
-  { key: "w33", label: "3×3 slider", type: "window", widthFt: 3, heightFt: 3, sillFt: 4, variant: "slider" },
-  { key: "w34", label: "3×4 slider", type: "window", widthFt: 3, heightFt: 4, sillFt: 4, variant: "slider" },
-  { key: "w34sh", label: "3×4 single-hung", type: "window", widthFt: 3, heightFt: 4, sillFt: 4, variant: "singleHung" },
-  { key: "w44", label: "4×4 fixed", type: "window", widthFt: 4, heightFt: 4, sillFt: 4, variant: "fixed" },
-  { key: "w46", label: "4×6 fixed", type: "window", widthFt: 4, heightFt: 6, sillFt: 3, variant: "fixed" },
-  { key: "w64", label: "6×4 picture", type: "window", widthFt: 6, heightFt: 4, sillFt: 3, variant: "fixed" },
-  { key: "w32aw", label: "3×2 awning", type: "window", widthFt: 3, heightFt: 2, sillFt: 5, variant: "awning" },
-  { key: "w62tr", label: "6×2 transom", type: "window", widthFt: 6, heightFt: 2, sillFt: 7, variant: "transom" },
+  { key: "w23", label: "Sliding window 2' × 3'", type: "window", widthFt: 2, heightFt: 3, sillFt: 4, variant: "slider" },
+  { key: "w33", label: "Sliding window 3' × 3'", type: "window", widthFt: 3, heightFt: 3, sillFt: 4, variant: "slider" },
+  { key: "w34", label: "Sliding window 3' × 4'", type: "window", widthFt: 3, heightFt: 4, sillFt: 4, variant: "slider" },
+  { key: "w34sh", label: "Single-hung window 3' × 4'", type: "window", widthFt: 3, heightFt: 4, sillFt: 4, variant: "singleHung" },
+  { key: "w44", label: "Fixed window 4' × 4'", type: "window", widthFt: 4, heightFt: 4, sillFt: 4, variant: "fixed" },
+  { key: "w46", label: "Fixed window 4' × 6'", type: "window", widthFt: 4, heightFt: 6, sillFt: 3, variant: "fixed" },
+  { key: "w64", label: "Picture window 6' × 4'", type: "window", widthFt: 6, heightFt: 4, sillFt: 3, variant: "fixed" },
+  { key: "w32aw", label: "Awning window 3' × 2'", type: "window", widthFt: 3, heightFt: 2, sillFt: 5, variant: "awning" },
+  { key: "w62tr", label: "Transom window 6' × 2'", type: "window", widthFt: 6, heightFt: 2, sillFt: 7, variant: "transom" },
 ];
 
 export const WINDOW_VARIANTS = ["slider", "singleHung", "fixed", "awning", "hopper", "transom"] as const;

@@ -66,3 +66,21 @@ export function syncExteriorWalls(model: BuildingModel): BuildingModel {
   });
   return { ...model, walls, openings };
 }
+
+/** Nearest exterior wall to a plan point: the wall, the position along it, and the distance. */
+export function nearestExteriorWall(model: BuildingModel, x: number, y: number): { wall: Wall; u: number; dist: number } | null {
+  let best: { wall: Wall; u: number; dist: number } | null = null;
+  for (const w of model.walls) {
+    if (w.role !== "exterior") continue;
+    const len = wallLengthFt(w);
+    if (len <= 0) continue;
+    const dx = (w.end.x - w.start.x) / len;
+    const dy = (w.end.y - w.start.y) / len;
+    const u = Math.max(0, Math.min(len, (x - w.start.x) * dx + (y - w.start.y) * dy));
+    const cx = w.start.x + dx * u;
+    const cy = w.start.y + dy * u;
+    const dist = Math.hypot(x - cx, y - cy);
+    if (!best || dist < best.dist) best = { wall: w, u, dist };
+  }
+  return best;
+}

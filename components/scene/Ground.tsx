@@ -3,68 +3,62 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 
+/** Tile size of the repeating grid texture, feet (a multiple of the 10' major grid). */
+const TILE_FT = 40;
+/** Plane extent, feet — far beyond the fog so the floor reads as infinite. */
+const PLANE_FT = 6000;
+
 /**
- * Soft ground plate: a large rounded slab with a faint 2' grid baked into a
- * canvas texture. Works on both the WebGPU and WebGL backends (no custom
- * shaders), receives shadows, and gives the model something to sit on.
+ * Infinite-looking ground: a huge plane with a seamless repeating 2'/10'
+ * grid tile that fades into the stage colour through scene fog. No custom
+ * shaders, so it renders on both the WebGPU and WebGL backends.
  */
-export function Ground({ center, grade, sizeFt = 260, clippingPlanes }: { center: [number, number]; grade: number; sizeFt?: number; clippingPlanes: THREE.Plane[] }) {
+export function Ground({ center, grade, clippingPlanes }: { center: [number, number]; grade: number; sizeFt?: number; clippingPlanes: THREE.Plane[] }) {
   const texture = useMemo(() => {
-    const px = 2048;
+    const px = 1024;
     const c = document.createElement("canvas");
     c.width = px;
     c.height = px;
     const ctx = c.getContext("2d")!;
-    // Warm paper ground with a vignette.
-    const g = ctx.createRadialGradient(px / 2, px / 2, px * 0.15, px / 2, px / 2, px * 0.7);
-    g.addColorStop(0, "#f3f0ea");
-    g.addColorStop(1, "#e6e1d8");
-    ctx.fillStyle = g;
+    ctx.fillStyle = "#efebe4";
     ctx.fillRect(0, 0, px, px);
-    // Grid: 2' minor, 10' major.
-    const ftPerPx = sizeFt / px;
-    const minor = 2 / ftPerPx;
-    ctx.strokeStyle = "rgba(90,80,70,0.06)";
-    ctx.lineWidth = 1.5;
+    const minor = px / (TILE_FT / 2);
+    ctx.strokeStyle = "rgba(90,80,70,0.07)";
+    ctx.lineWidth = 1.2;
     for (let i = 0; i <= px; i += minor) {
       ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, px);
-      ctx.moveTo(0, i);
-      ctx.lineTo(px, i);
+      ctx.moveTo(i + 0.5, 0);
+      ctx.lineTo(i + 0.5, px);
+      ctx.moveTo(0, i + 0.5);
+      ctx.lineTo(px, i + 0.5);
       ctx.stroke();
     }
-    ctx.strokeStyle = "rgba(90,80,70,0.12)";
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "rgba(90,80,70,0.14)";
+    ctx.lineWidth = 2;
     for (let i = 0; i <= px; i += minor * 5) {
       ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, px);
-      ctx.moveTo(0, i);
-      ctx.lineTo(px, i);
+      ctx.moveTo(i + 0.5, 0);
+      ctx.lineTo(i + 0.5, px);
+      ctx.moveTo(0, i + 0.5);
+      ctx.lineTo(px, i + 0.5);
       ctx.stroke();
     }
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(PLANE_FT / TILE_FT, PLANE_FT / TILE_FT);
     t.anisotropy = 8;
     return t;
-  }, [sizeFt]);
+  }, []);
 
-  // Snap the plate so grid lines land on whole feet relative to the building origin.
-  const ox = Math.round(center[0] / 10) * 10;
-  const oz = Math.round(center[1] / 10) * 10;
+  // Anchor the tiling on the building origin so grid lines land on whole feet.
+  const ox = Math.round(center[0] / TILE_FT) * TILE_FT;
+  const oz = Math.round(center[1] / TILE_FT) * TILE_FT;
   return (
-    <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[ox, grade, oz]} receiveShadow>
-        <planeGeometry args={[sizeFt, sizeFt]} />
-        <meshStandardMaterial map={texture} roughness={0.95} metalness={0} clippingPlanes={clippingPlanes} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
-      </mesh>
-      {/* Thick edge so the plate reads as a slab from low angles. Its top face sits 1" BELOW the
-          textured plane: coplanar faces z-fight (stepped bands across the plate on WebGPU). */}
-      <mesh position={[ox, grade - 1 - 1 / 12, oz]}>
-        <boxGeometry args={[sizeFt, 2, sizeFt]} />
-        <meshStandardMaterial color="#d8d2c8" roughness={1} clippingPlanes={clippingPlanes} />
-      </mesh>
-    </group>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[ox, grade, oz]} receiveShadow>
+      <planeGeometry args={[PLANE_FT, PLANE_FT]} />
+      <meshStandardMaterial map={texture} roughness={0.95} metalness={0} clippingPlanes={clippingPlanes} />
+    </mesh>
   );
 }

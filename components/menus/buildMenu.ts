@@ -9,7 +9,10 @@ import { formatFtIn } from "@/lib/units";
 import { getRule } from "@/rules";
 import { PEN_SPECIES, SPECIES_PRESETS } from "@/rules/animals/presets";
 import { ROOM_PRESETS, ZONE_TYPE_LABEL, defaultPenSize, zoneRect } from "@/lib/model/zones";
-import type { Species, ZoneType } from "@/lib/model/schema";
+import type { FixtureKind, InteriorDoorType, Species, ZoneType } from "@/lib/model/schema";
+import { INTERIOR_DOOR_PRESETS, INTERIOR_DOOR_TYPES, findInteriorDoor } from "@/lib/model/interiorDoors";
+import { FIXTURE_PRESETS, PLACEABLE_FIXTURE_KINDS } from "@/lib/model/electrical";
+import { PRESET_LABEL } from "@/lib/store/useViewStore";
 
 /**
  * Context-menu definitions (SPEC §21.1), keyed by what was right-clicked.
@@ -50,19 +53,14 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
   const viewItems: MenuItem[] = [
     {
       label: "View",
-      children: [
-        { label: "Exterior", onSelect: () => vs.setPreset("exterior") },
-        { label: "Framing only", onSelect: () => vs.setPreset("framing") },
-        { label: "Dollhouse (cut at 4')", onSelect: () => vs.setPreset("dollhouse") },
-        { label: "Interior", onSelect: () => vs.setPreset("interior") },
-      ],
+      children: (["exterior", "interior", "framing", "dollhouse"] as const).map((p) => ({ label: `${vs.preset === p ? "✓ " : "   "}${PRESET_LABEL[p]}`, onSelect: () => vs.setPreset(p) })),
     },
     {
       label: "Layers",
       children: ALL_LAYERS.map((l) => ({ label: `${vs.visibleLayers.has(l) ? "✓ " : "   "}${LAYER_LABEL[l]}`, onSelect: () => vs.toggleLayer(l) })),
     },
-    { label: vs.renderMode === "white" ? "Realistic materials" : "White model", onSelect: () => vs.setRenderMode(vs.renderMode === "white" ? "realistic" : "white") },
-    { label: `${vs.isometric ? "✓ " : "   "}Isometric camera`, onSelect: () => vs.setIsometric(!vs.isometric), shortcut: "I" },
+    { label: vs.renderMode === "white" ? "Your colours" : "Plain white model", onSelect: () => vs.setRenderMode(vs.renderMode === "white" ? "realistic" : "white") },
+    { label: `${vs.isometric ? "✓ " : "   "}No perspective`, onSelect: () => vs.setIsometric(!vs.isometric), shortcut: "I" },
     { label: vs.cutHeightFt === null ? "Cutaway at 4'" : "Remove cutaway", onSelect: () => vs.setCutHeight(vs.cutHeightFt === null ? 4 : null), shortcut: "X" },
     { separator: true, label: "" },
     { label: "Zoom to fit", onSelect: () => vs.requestFit(), shortcut: "F" },
@@ -155,7 +153,7 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
           { label: `${model.roof.ridgeAxis === "ew" ? "✓ " : "   "}East–west`, onSelect: () => ps.setRoof({ ridgeAxis: "ew" }) },
         ] },
         { separator: true, label: "" },
-        { label: "Lift roof (dollhouse)", onSelect: () => vs.setPreset("dollhouse") },
+        { label: "See inside (cutaway)", onSelect: () => vs.setPreset("dollhouse") },
         ...viewItems,
       ];
     case "footprint":
@@ -179,9 +177,24 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
         ...(preset
           ? [{ label: "Resize to", children: [preset.minPen, preset.recommendedPen, [14, 16] as [number, number], [16, 16] as [number, number]].map(([w, d]) => ({ label: `${w}×${d}`, onSelect: () => ps.resizeZone(z.id, { ...r, w, d }, vs.autoGrow) })) }]
           : []),
-        ...(z.type === "pen" ? [{ label: `${z.outsideAccess ? "✓ " : "   "}Outside access (Dutch door)`, onSelect: () => ps.setOutsideAccess(z.id, !z.outsideAccess) }] : []),
+        ...(z.type === "pen" ? [{ label: `${z.outsideAccess ? "✓ " : "   "}Door to the outside (Dutch door)`, onSelect: () => ps.setOutsideAccess(z.id, !z.outsideAccess) }] : []),
+        ...(z.type !== "aisle" && z.type !== "open"
+          ? [
+              {
+                label: "Add a door",
+                children: INTERIOR_DOOR_TYPES.map((t: InteriorDoorType) => ({
+                  label: INTERIOR_DOOR_PRESETS[t].label,
+                  onSelect: () => {
+                    vs.setToolInteriorDoorType(t);
+                    vs.setTool("interiorDoor");
+                  },
+                })),
+              },
+              ...(z.doors.length === 0 ? [{ label: `${z.autoDoor ? "✓ " : "   "}Default door to the aisle`, onSelect: () => ps.setAutoDoor(z.id, !z.autoDoor) }] : []),
+            ]
+          : []),
         { separator: true, label: "" },
-        { label: "Duplicate", onSelect: () => ps.duplicateZone(z.id, alongDir), shortcut: "D" },
+        { label: "Add another beside it", onSelect: () => ps.duplicateZone(z.id, alongDir), shortcut: "Ctrl+D" },
         { label: "Array", children: [2, 3, 4, 6].map((n) => ({ label: `${n} more along the bays`, onSelect: () => ps.arrayZone(z.id, n, alongDir) })) },
         { label: "Split", children: [
           { label: "In halves", onSelect: () => ps.splitZone(z.id, 2) },
@@ -204,6 +217,51 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
         { separator: true, label: "" },
         { label: "Properties", onSelect: () => ps.select(lt.id) },
         { label: "Delete", onSelect: () => ps.removeLeanTo(lt.id), danger: true, shortcut: "Del" },
+      ];
+    }
+    case "interiorDoor": {
+      // planX === 1 marks the zone's default (auto) door; id is then the zone id.
+      if (t.planX === 1) {
+        const z = model.zones.find((x) => x.id === t.id);
+        if (!z) return [];
+        return [
+          { label: "Default door (click it to edit)", disabled: true },
+          { label: "Change to", children: INTERIOR_DOOR_TYPES.map((ty) => ({ label: INTERIOR_DOOR_PRESETS[ty].label, onSelect: () => { vs.setToolInteriorDoorType(ty); vs.setTool("interiorDoor"); } })) },
+          { separator: true, label: "" },
+          { label: "No door here", onSelect: () => ps.setAutoDoor(z.id, false), danger: true },
+        ];
+      }
+      const found = findInteriorDoor(model, t.id ?? "");
+      if (!found) return [];
+      const { door } = found;
+      const preset = INTERIOR_DOOR_PRESETS[door.type];
+      return [
+        { label: "Change type", children: INTERIOR_DOOR_TYPES.filter((ty) => ty !== door.type).map((ty) => ({ label: INTERIOR_DOOR_PRESETS[ty].label, onSelect: () => ps.updateInteriorDoor(door.id, { type: ty }) })) },
+        ...(preset.hinged
+          ? [
+              { label: door.swing === "in" ? "Swing out (into the aisle)" : "Swing in", onSelect: () => ps.updateInteriorDoor(door.id, { swing: door.swing === "in" ? "out" : "in" }) },
+              { label: `Hinges on the ${door.hinge === "left" ? "right" : "left"}`, onSelect: () => ps.updateInteriorDoor(door.id, { hinge: door.hinge === "left" ? "right" : "left" }) },
+            ]
+          : preset.leaf !== "none"
+            ? [{ label: door.swing === "slideLeft" ? "Slide right" : "Slide left", onSelect: () => ps.updateInteriorDoor(door.id, { swing: door.swing === "slideLeft" ? "slideRight" : "slideLeft" }) }]
+            : []),
+        { label: "Width", children: [3, 3.5, 4, 5, 6].map((w) => ({ label: `${Math.abs(door.widthFt - w) < 1e-6 ? "✓ " : "   "}${w}'`, onSelect: () => ps.updateInteriorDoor(door.id, { widthFt: w }) })) },
+        { separator: true, label: "" },
+        { label: "Properties", onSelect: () => ps.select(door.id) },
+        { label: "Delete", onSelect: () => ps.removeInteriorDoor(door.id), danger: true, shortcut: "Del" },
+      ];
+    }
+    case "fixture": {
+      const f = model.electrical.fixtures.find((x) => x.id === t.id);
+      if (!f) return [];
+      return [
+        ...(f.kind !== "panel"
+          ? [{ label: "Change to", children: PLACEABLE_FIXTURE_KINDS.filter((k: FixtureKind) => k !== f.kind && k !== "panel").map((k: FixtureKind) => ({ label: FIXTURE_PRESETS[k].label, onSelect: () => ps.updateFixture(f.id, { kind: k }) })) }]
+          : []),
+        { label: "Height", children: [4, 7, 8, 9, 10, 12].filter((h) => h <= model.eaveHeightFt).map((h) => ({ label: `${Math.abs(f.mountFt - h) < 1e-6 ? "✓ " : "   "}${h}' up`, onSelect: () => ps.updateFixture(f.id, { mountFt: h }) })) },
+        { separator: true, label: "" },
+        { label: "Properties", onSelect: () => ps.select(f.id) },
+        { label: "Delete", onSelect: () => ps.removeFixture(f.id), danger: true, shortcut: "Del" },
       ];
     }
     case "empty": {
@@ -234,7 +292,18 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
             { label: "Clear interior", onSelect: () => ps.applyLayout("clear"), danger: true },
           ],
         },
-        { label: "Fit building to interior", onSelect: () => ps.fitEnvelopeToZones(), disabled: model.zones.length === 0 },
+        { label: "Shrink building to fit the stalls", onSelect: () => ps.fitEnvelopeToZones(), disabled: model.zones.length === 0 },
+        { separator: true, label: "" },
+        {
+          label: "Add electrical here",
+          children: PLACEABLE_FIXTURE_KINDS.map((k: FixtureKind) => ({
+            label: FIXTURE_PRESETS[k].label,
+            onSelect: () => {
+              const id = ps.addFixture({ kind: k, x: t.planX ?? 0, y: t.planY ?? 0 });
+              if (id) ps.select(id);
+            },
+          })),
+        },
         { separator: true, label: "" },
         ...viewItems,
       ];

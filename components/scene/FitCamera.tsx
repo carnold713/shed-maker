@@ -7,6 +7,16 @@ import type { Geometry } from "@/lib/geometry";
 import type { ViewPreset } from "@/lib/store/useViewStore";
 
 /**
+ * Perspective near/far planes, feet. The near plane sets depth-buffer
+ * precision (it scales with distance² / near): 0.5' keeps ¾" floor mats,
+ * trim and skins from z-fighting at 200' while still letting the interior
+ * preset stand a stride from a wall. The far plane only has to reach the
+ * fog, beyond which the ground plane is the background colour anyway.
+ */
+export const CAMERA_NEAR_FT = 0.5;
+export const CAMERA_FAR_FT = 2500;
+
+/**
  * Frames the building's bounding sphere from a fixed south-east, elevated
  * direction, respecting the viewport aspect. Re-fits when the bounds change,
  * on an explicit request (`nonce`), or when the preset switches. The interior
@@ -51,8 +61,8 @@ export function FitCamera({ bounds, nonce, preset, eaveFt, iso = false }: { boun
     }
     camera.position.copy(position);
     if (camera instanceof THREE.PerspectiveCamera) {
-      camera.near = 0.1;
-      camera.far = 2000;
+      camera.near = CAMERA_NEAR_FT;
+      camera.far = CAMERA_FAR_FT;
     }
     camera.updateProjectionMatrix();
     if (controls) {

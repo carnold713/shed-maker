@@ -17,9 +17,7 @@ export default async function HomePage() {
         <div className="mb-8 flex items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Your barns</h1>
-            <p className="mt-1 text-sm text-muted">
-              Design inside-out or outside-in. Framing, materials, and plan sheets come from the same model.
-            </p>
+            <p className="mt-1 text-sm text-muted">Design a barn, see it in 3D, and hand your builder something real.</p>
           </div>
           {user ? <NewProjectButton /> : null}
         </div>
@@ -28,8 +26,8 @@ export default async function HomePage() {
           <p className="rounded-lg border border-border bg-panel p-6 text-sm text-muted">Sign in to create and save projects.</p>
         ) : projects.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border bg-panel p-10 text-center">
-            <p className="text-base font-medium">No projects yet</p>
-            <p className="mt-1 text-sm text-muted">Start with a 24×36 post-frame default and shape it from there.</p>
+            <p className="text-base font-medium">No barns yet.</p>
+            <p className="mt-1 text-sm text-muted">Answer four questions and you&apos;ll have one in a minute.</p>
             <div className="mt-4 flex justify-center">
               <NewProjectButton />
             </div>
@@ -38,7 +36,7 @@ export default async function HomePage() {
           <ul className="grid gap-3 sm:grid-cols-2">
             {projects.map((p) => (
               <li key={p.id}>
-                <Link href={`/p/${p.id}`} className="block rounded-lg border border-border bg-panel p-4 transition hover:border-accent">
+                <Link href={`/p/${p.id}`} className="block rounded-2xl border border-border bg-panel p-4 transition hover:border-accent">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="truncate font-medium">{p.name}</span>
                     <span className="shrink-0 font-mono text-xs text-muted">{p.footprint}</span>

@@ -14,9 +14,9 @@ exports[`deriveGeometry > is a snapshot-stable derivation of the default model 1
       -38,
     ],
   },
-  "boxes": 144,
+  "boxes": 154,
   "kinds": {
-    "framing": 136,
+    "framing": 146,
     "gravel": 1,
     "roofPlane": 2,
     "slab": 1,

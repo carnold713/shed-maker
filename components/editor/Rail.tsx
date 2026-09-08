@@ -1,77 +1,88 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
-import type { ViewMode } from "./Toolbar";
+import { useMemo } from "react";
+import { useProjectStore } from "@/lib/store/useProjectStore";
+import { useDerived } from "@/lib/store/useDerived";
+import { STEPS, useViewStore, type Step } from "@/lib/store/useViewStore";
+import { Icon } from "@/components/ui/Icon";
 
-function Icon({ d, size = 20 }: { d: string; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d={d} />
-    </svg>
-  );
+const ICON: Record<Step, string> = {
+  project: "project",
+  layout: "layout",
+  building: "building",
+  outside: "outside",
+  electrical: "bolt",
+  check: "check",
+  plans: "plans",
+};
+
+/** Step status from the model: empty · started · done (UX audit §2.1). */
+function useStepStatus(): Record<Step, "empty" | "started" | "done"> {
+  const model = useProjectStore((s) => s.model)!;
+  const { report } = useDerived();
+  return useMemo(() => {
+    const doors = model.openings.filter((o) => o.type !== "window").length;
+    const errors = report?.errors ?? 0;
+    return {
+      project: model.site.verified.frost ? "done" : model.meta.notes ? "started" : "empty",
+      layout: model.zones.length === 0 ? "empty" : model.zones.some((z) => z.type === "pen") ? "done" : "started",
+      building: "done",
+      outside: doors === 0 ? "empty" : model.openings.some((o) => o.type === "window") ? "done" : "started",
+      electrical: model.electrical.fixtures.length === 0 ? "empty" : model.electrical.fixtures.some((f) => f.kind === "panel") ? "done" : "started",
+      check: errors === 0 ? "done" : "started",
+      plans: errors === 0 && model.zones.length > 0 && doors > 0 ? "done" : "empty",
+    };
+  }, [model, report]);
 }
 
-const ICONS = {
-  home: "M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",
-  cube: "M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2zm0 0v9m8-4.5L12 11 4 6.5",
-  plan: "M4 4h16v16H4zM4 12h8m0 0v8m0-8V4",
-  split: "M4 5h16v14H4zM12 5v14",
-  frame: "M4 20V8l8-5 8 5v12M4 12h16M8 20V9m8 11V9",
-  check: "M9 12l2 2 4-4m-3 10a9 9 0 1 1 0-18 9 9 0 0 1 0 18z",
-  pack: "M4 7h16v13H4zM4 7l2-3h12l2 3M9 11h6",
-  help: "M12 17h.01M9.1 9a3 3 0 1 1 5.8 1c0 2-3 2-3 4m0 7a9 9 0 1 1 0-18 9 9 0 0 1 0 18z",
-  project: "M4 5h16v14H4zM4 10h16M9 10v9",
-} as const;
+/** Left rail: the steps in order, each with a status dot; Check carries the problem count. */
+export function Rail() {
+  const step = useViewStore((s) => s.step);
+  const setStep = useViewStore((s) => s.setStep);
+  const status = useStepStatus();
+  const { report } = useDerived();
+  const errors = report?.errors ?? 0;
+  const warnings = report?.warnings ?? 0;
 
-function RailButton({ label, active, onClick, children, testId }: { label: string; active?: boolean; onClick?: () => void; children: ReactNode; testId?: string }) {
   return (
-    <button
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      data-testid={testId}
-      className={`flex h-11 w-11 items-center justify-center rounded-2xl transition ${active ? "bg-accent text-white shadow-[0_8px_18px_-8px_rgba(238,125,43,0.9)]" : "text-muted hover:bg-black/5 hover:text-foreground"}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** Left icon rail (reference layout): logo, mode switches, utilities. */
-export function Rail({ view, onView, onCheck, onPack, onProject, projectOpen }: { view: ViewMode; onView: (v: ViewMode) => void; onCheck: () => void; onPack: () => void; onProject: () => void; projectOpen: boolean }) {
-  return (
-    <nav className="flex h-full w-16 shrink-0 flex-col items-center gap-2 border-r border-border/60 bg-panel py-3">
-      <Link href="/" className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white shadow-[0_8px_18px_-8px_rgba(238,125,43,0.9)]" title="Your barns" aria-label="Your barns">
-        <Icon d={ICONS.home} />
+    <nav className="flex h-full w-[76px] shrink-0 flex-col items-center border-r border-border/70 bg-panel py-3" aria-label="Steps">
+      <Link href="/" className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white shadow-[0_8px_18px_-8px_rgba(238,125,43,0.9)]" title="Your barns" aria-label="Your barns">
+        <Icon name="home" />
       </Link>
-      <span className="mb-1 text-[10px] font-semibold tracking-[0.14em] text-muted">MENU</span>
-      <div className="2xl:hidden">
-        <RailButton label="Project panel" active={projectOpen} onClick={onProject} testId="rail-project">
-          <Icon d={ICONS.project} />
-        </RailButton>
-      </div>
-      <RailButton label="3D view" active={view === "3d"} onClick={() => onView("3d")} testId="rail-3d">
-        <Icon d={ICONS.cube} />
-      </RailButton>
-      <RailButton label="Plan" active={view === "plan"} onClick={() => onView("plan")} testId="rail-plan">
-        <Icon d={ICONS.plan} />
-      </RailButton>
-      <RailButton label="Split view" active={view === "split"} onClick={() => onView("split")} testId="rail-split">
-        <Icon d={ICONS.split} />
-      </RailButton>
-      <RailButton label="Checks" onClick={onCheck} testId="rail-checks">
-        <Icon d={ICONS.check} />
-      </RailButton>
-      <RailButton label="Builder pack (coming in M4)" onClick={onPack}>
-        <Icon d={ICONS.pack} />
-      </RailButton>
-      <div className="mt-auto flex flex-col gap-2">
-        <a href="https://github.com/carnold713/shed-maker/blob/claude/barn-designer-handoff-da76fh/docs/SPEC.md" target="_blank" rel="noreferrer" className="flex h-11 w-11 items-center justify-center rounded-2xl text-muted hover:bg-black/5 hover:text-foreground" title="Spec" aria-label="Spec">
-          <Icon d={ICONS.help} />
-        </a>
-      </div>
+      <ol className="flex w-full flex-col items-center gap-1">
+        {STEPS.map((s, i) => {
+          const active = step === s.id;
+          const st = status[s.id];
+          const badge = s.id === "check" ? (errors ? { n: errors, tone: "bg-red-500" } : warnings ? { n: warnings, tone: "bg-amber-400" } : null) : null;
+          return (
+            <li key={s.id} className="w-full px-2">
+              <button
+                onClick={() => setStep(s.id)}
+                aria-current={active ? "step" : undefined}
+                title={`${s.label} · ${s.hint} (Ctrl+${i + 1})`}
+                data-testid={`rail-step-${s.id}`}
+                className={`relative flex w-full flex-col items-center gap-0.5 rounded-xl px-1 py-2 text-[10.5px] font-medium transition ${active ? "bg-accent/12 text-accent" : "text-muted hover:bg-black/5 hover:text-foreground"}`}
+              >
+                <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${active ? "bg-accent text-white" : ""}`}>
+                  <Icon name={ICON[s.id]} size={18} />
+                </span>
+                {s.label}
+                {badge ? (
+                  <span className={`absolute right-1 top-1 min-w-[18px] rounded-full px-1 text-center text-[10px] font-semibold leading-[18px] text-white ${badge.tone}`} data-testid="rail-check-badge">
+                    {badge.n}
+                  </span>
+                ) : (
+                  <span className={`absolute right-2.5 top-2 h-1.5 w-1.5 rounded-full ${st === "done" ? "bg-emerald-500" : st === "started" ? "bg-amber-400" : "bg-border"}`} aria-hidden />
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <a href="https://github.com/carnold713/shed-maker/blob/claude/barn-designer-handoff-da76fh/docs/SPEC.md" target="_blank" rel="noreferrer" className="mt-auto flex h-10 w-10 items-center justify-center rounded-xl text-muted hover:bg-black/5 hover:text-foreground" title="Help & spec" aria-label="Help">
+        <Icon name="help" />
+      </a>
     </nav>
   );
 }

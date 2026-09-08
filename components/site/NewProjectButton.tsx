@@ -1,35 +1,10 @@
-"use client";
+import Link from "next/link";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Button } from "@/components/ui/Button";
-
+/** Primary call to action: the wizard lives at /new. */
 export function NewProjectButton() {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   return (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        variant="primary"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          setError(null);
-          try {
-            const res = await fetch("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-            if (!res.ok) throw new Error(`Create failed (${res.status})`);
-            const { project } = (await res.json()) as { project: { id: string } };
-            router.push(`/p/${project.id}`);
-          } catch (e) {
-            setError(e instanceof Error ? e.message : "Create failed");
-            setBusy(false);
-          }
-        }}
-      >
-        {busy ? "Creating…" : "New barn"}
-      </Button>
-      {error ? <span className="text-xs text-red-600">{error}</span> : null}
-    </div>
+    <Link href="/new" className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[0_6px_16px_-8px_rgba(238,125,43,0.8)] transition hover:brightness-105 active:translate-y-px" data-testid="new-barn">
+      New barn
+    </Link>
   );
 }

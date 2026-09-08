@@ -4,18 +4,34 @@
  * deduplicated. Pen edges facing an aisle get a stall door; pen edges on an
  * exterior wall with `outsideAccess` are reported so the envelope can react.
  */
-import type { BuildingModel, Zone } from "@/lib/model/schema";
+import type { BuildingModel, InteriorDoor, InteriorDoorType, Zone } from "@/lib/model/schema";
 import { zoneRect, type Rect } from "@/lib/model/zones";
 import { SPECIES_PRESETS, type SpeciesPreset } from "@/rules/animals/presets";
+import { defaultInteriorDoorSize, defaultInteriorDoorType, doorSegment } from "@/lib/model/interiorDoors";
 
 export type PartitionKind = "stall" | "full" | "low";
 
 export interface PartitionDoor {
+  /** Door id (`auto_<zoneId>` for the derived default door). */
+  id: string;
   /** Distance from the partition start, feet. */
   u: number;
   widthFt: number;
+  heightFt: number;
   /** Which zone the door serves. */
   zoneId: string;
+  type: InteriorDoorType;
+  swing: InteriorDoor["swing"];
+  hinge: InteriorDoor["hinge"];
+  /** True for the derived default door (no InteriorDoor record behind it). */
+  auto: boolean;
+  /** Plan segment of the door (start < end along the partition). */
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  /** Side of the partition the zone is on: -1 lower coordinate, +1 higher. */
+  zoneSide: -1 | 1;
 }
 
 export interface Partition {
@@ -124,18 +140,71 @@ export function derivePartitions(model: BuildingModel): Partition[] {
     }
   }
 
-  // Doors: each pen/room gets one door on its longest shared edge with an aisle (or any non-pen neighbour for rooms).
+  const pushDoor = (p: Partition, z: Zone, u: number, d: Pick<InteriorDoor, "id" | "type" | "widthFt" | "heightFt" | "swing" | "hinge">, auto: boolean) => {
+    const vertical = Math.abs(p.x1 - p.x0) < EPS;
+    const zoneSide: -1 | 1 = p.zones[0]?.id === z.id ? -1 : 1;
+    p.doors.push({
+      id: d.id,
+      u,
+      widthFt: d.widthFt,
+      heightFt: d.heightFt,
+      zoneId: z.id,
+      type: d.type,
+      swing: d.swing,
+      hinge: d.hinge,
+      auto,
+      x0: vertical ? p.x0 : p.x0 + u,
+      y0: vertical ? p.y0 + u : p.y0,
+      x1: vertical ? p.x0 : p.x0 + u + d.widthFt,
+      y1: vertical ? p.y0 + u + d.widthFt : p.y0,
+      zoneSide,
+    });
+  };
+
   for (const z of model.zones) {
-    if (z.type === "aisle" || z.type === "open") continue;
+    if (z.doors.length > 0) {
+      // Explicit doors: land each one in the partition that contains its centre.
+      const r = zoneRect(z);
+      for (const d of z.doors) {
+        const seg = doorSegment(r, d);
+        const vertical = d.side === "e" || d.side === "w";
+        const c = vertical ? seg.x0 : seg.y0;
+        const mid = vertical ? (seg.y0 + seg.y1) / 2 : (seg.x0 + seg.x1) / 2;
+        const host = out.find((p) => {
+          const pv = Math.abs(p.x1 - p.x0) < EPS;
+          if (pv !== vertical) return false;
+          const pc = pv ? p.x0 : p.y0;
+          if (Math.abs(pc - c) > EPS) return false;
+          const a0 = pv ? p.y0 : p.x0;
+          const a1 = pv ? p.y1 : p.x1;
+          return a0 - EPS <= mid && mid <= a1 + EPS;
+        });
+        if (!host) continue; // edge is on the exterior wall or open floor: no partition to hold a door
+        const start = vertical ? host.y0 : host.x0;
+        const u0 = Math.max(0, (vertical ? seg.y0 : seg.x0) - start);
+        const w = Math.min(d.widthFt, host.lengthFt - u0);
+        if (w < 1) continue;
+        pushDoor(host, z, u0, { ...d, widthFt: w }, false);
+      }
+      continue;
+    }
+    if (!z.autoDoor || z.type === "aisle" || z.type === "open") continue;
+    // Default door: one on the longest shared edge with an aisle (or any non-pen neighbour for rooms).
     const candidates = out.filter((p) => p.zones.some((q) => q?.id === z.id) && p.zones.some((q) => q && q.id !== z.id && (q.type === "aisle" || (isRoom(z) && q.type !== "pen"))));
     if (candidates.length === 0) continue;
     const best = candidates.sort((a, b) => b.lengthFt - a.lengthFt)[0];
-    const preset = z.species ? SPECIES_PRESETS[z.species] : null;
-    const doorW = Math.min(best.lengthFt - 0.5, preset ? preset.doorFt : 3);
+    const type = defaultInteriorDoorType(z);
+    const size = defaultInteriorDoorSize(type, z.species);
+    const doorW = Math.min(best.lengthFt - 0.5, size.widthFt);
     if (doorW < 2) continue;
-    best.doors.push({ u: best.lengthFt / 2 - doorW / 2, widthFt: doorW, zoneId: z.id });
+    pushDoor(best, z, best.lengthFt / 2 - doorW / 2, { id: `auto_${z.id}`, type, widthFt: doorW, heightFt: size.heightFt, swing: type === "stallSlide" ? "slideRight" : "out", hinge: "left" }, true);
   }
   return out;
+}
+
+/** Every door in the interior, with its host partition (for hit-testing, schedules and drawings). */
+export function interiorDoors(model: BuildingModel): { partition: Partition; door: PartitionDoor }[] {
+  return derivePartitions(model).flatMap((partition) => partition.doors.map((door) => ({ partition, door })));
 }
 
 /** Pens flagged for outside access whose rect touches an exterior wall: [zone, wall side, centre along that wall]. */

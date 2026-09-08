@@ -57,7 +57,9 @@ export function createDefaultModel(opts: { name?: string; wFt?: number; dFt?: nu
       trimColor: "#ffffff",
       wainscot: { enabled: false, heightFt: 3, color: "#5b5f63" },
     },
+    electrical: { service: { amps: 100, feederLengthFt: 100, feedFrom: "housePanel" }, wiring: "pvcConduit", fixtures: [] },
     overrides: [],
+    priceOverrides: {},
     meta: { name: opts.name ?? "Untitled barn", createdAt: now, updatedAt: now },
   };
   return syncExteriorWalls(base);

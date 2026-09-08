@@ -11,12 +11,13 @@ import { InstancedBoxes } from "./InstancedBoxes";
 
 const SELECT = "#b5532a";
 
-type Group = { key: string; boxes: BoxMember[]; color: string; roughness: number; metalness: number; transparent?: boolean; opacity?: number };
+type Group = { key: string; boxes: BoxMember[]; color: string; roughness: number; metalness: number; transparent?: boolean; opacity?: number; emissive?: string; emissiveIntensity?: number };
 
 /** Selection id for a box: openings select the opening, skins select the footprint, framing selects the member. */
 function selectionIdFor(b: BoxMember): string {
   if (b.kind === "wallSkin") return "footprint";
-  if (b.kind === "floor" || b.kind === "partition" || b.kind === "grille" || b.kind === "stallDoor") return b.entityId;
+  if (b.kind === "floor" || b.kind === "partition" || b.kind === "grille" || b.kind === "stallDoor" || b.kind === "track" || b.kind === "fixture") return b.entityId;
+  if (b.kind === "wire") return "electrical";
   if (b.kind === "framing") return b.id;
   if (b.kind === "roofPlane" || b.kind === "slab") return b.entityId;
   return b.entityId; // opening parts -> opening id
@@ -24,7 +25,10 @@ function selectionIdFor(b: BoxMember): string {
 
 function targetFor(b: BoxMember): ContextTarget["kind"] {
   if (b.kind === "wallSkin") return "wall";
-  if (b.kind === "floor" || b.kind === "partition" || b.kind === "grille" || b.kind === "stallDoor") return "zone";
+  if (b.kind === "fixture") return "fixture";
+  if (b.kind === "wire") return "viewport";
+  if (b.kind === "stallDoor" || b.kind === "track") return b.entityId.startsWith("door_") ? "interiorDoor" : "zone";
+  if (b.kind === "floor" || b.kind === "partition" || b.kind === "grille") return "zone";
   if (b.kind === "leanToSkin" || b.entityId.startsWith("lt_")) return "leanTo";
   if (b.kind === "apron" || b.kind === "gravel") return "footprint";
   if (b.kind === "framing") return "member";
@@ -58,6 +62,9 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
       gravel: { color: white ? "#dadad6" : "#c2bdb0", roughness: 1, metalness: 0 },
       dirt: { color: white ? "#d8d5cf" : "#b19a80", roughness: 1, metalness: 0 },
       floorWood: { color: white ? "#e4e1da" : "#d4b489", roughness: 0.85, metalness: 0 },
+      fixture: { color: "#fbfbf6", roughness: 0.4, metalness: 0.05, emissive: "#fff6dc", emissiveIntensity: 0.6 },
+      device: { color: white ? "#b9b7b2" : "#6e7378", roughness: 0.6, metalness: 0.25 },
+      wire: { color: white ? "#9a9894" : "#8e8f93", roughness: 0.5, metalness: 0.3 },
     };
     const by = new Map<string, Group>();
     for (const b of geometry.boxes) {
@@ -79,7 +86,7 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
       e.nativeEvent.preventDefault();
       const kind = targetFor(b);
       const id = kind === "wall" ? b.entityId : kind === "member" ? b.id : kind === "roof" ? "roof" : kind === "footprint" ? "footprint" : b.entityId;
-      if (kind === "opening" || kind === "member" || kind === "wall" || kind === "zone" || kind === "leanTo") select(kind === "wall" ? "footprint" : id);
+      if (kind === "opening" || kind === "member" || kind === "wall" || kind === "zone" || kind === "leanTo" || kind === "fixture" || kind === "interiorDoor") select(kind === "wall" ? "footprint" : id);
       openContextMenu({ kind, id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY, from: "3d" });
     },
     [openContextMenu, select],
@@ -97,6 +104,8 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
           metalness={g.metalness}
           transparent={g.transparent}
           opacity={g.opacity}
+          emissive={g.emissive}
+          emissiveIntensity={g.emissiveIntensity}
           selection={selection}
           hovered={hovered}
           clippingPlanes={clippingPlanes}

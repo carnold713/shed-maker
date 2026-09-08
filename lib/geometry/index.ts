@@ -6,6 +6,8 @@ import { SLIDING_LEAF_OVERLAP_FT, SLIDING_LEAF_STANDOFF_FT, needsApron } from "@
 import { leanToHeights, leanToSpan } from "@/lib/model/leanTos";
 import { planToWorld, eulerYX } from "./frame";
 import { derivePartitions } from "@/lib/interior/partitions";
+import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
+import { electricalGeometry } from "./electrical";
 import { zoneRect } from "@/lib/model/zones";
 import type { BoxMember, Geometry, PolygonMember, Vec3 } from "./types";
 
@@ -156,6 +158,7 @@ export function deriveGeometry(model: BuildingModel, framing: FramingSet = deriv
 
   // ---- Interior: zone floors and partitions derived from zone edges (SPEC §5.3, §24)
   boxes.push(...interiorGeometry(model));
+  boxes.push(...electricalGeometry(model));
 
   // ---- Lean-tos: roof plane, enclosure skins
   for (const lt of model.leanTos) {
@@ -326,24 +329,31 @@ function openingGeometry(f: WallFrame, o: Opening): BoxMember[] {
   return out;
 }
 
+/** Finished-floor build-up over the slab by flooring type, feet. */
+const FLOOR_THICKNESS_FT: Record<string, number> = { concreteMats: 0.75 / 12, wood: 1.5 / 12, gravel: 1 / 12, dirt: 1 / 12, concrete: 0.5 / 12 };
+
 /** Partition thickness: 2×6 T&G kick-wall between posts ≈ 1½"; stud partitions 4½". */
 const STALL_PARTITION_THICK_FT = 1.5 / 12;
 const FULL_PARTITION_THICK_FT = 4.5 / 12;
 
 export function interiorGeometry(model: BuildingModel): BoxMember[] {
   const out: BoxMember[] = [];
-  // Floor tints per zone, a hair above the slab.
+  // Zone floors sit ON the slab at their real thickness (¾" rubber mats,
+  // 1½" T&G wood, a 1" wearing course for gravel / dirt). A paper-thin tint
+  // coplanar with the slab z-fights at any distance; a concrete "floor" is
+  // the slab itself and only needs a thin pick target.
   for (const z of model.zones) {
     const r = zoneRect(z);
     const material: BoxMember["material"] = z.flooring === "concreteMats" ? "mats" : z.flooring === "gravel" ? "gravel" : z.flooring === "dirt" ? "dirt" : z.flooring === "wood" ? "floorWood" : "concrete";
+    const thick = FLOOR_THICKNESS_FT[z.flooring] ?? 0.0625;
     out.push({
       id: `floor_${z.id}`,
       kind: "floor",
       layer: "interior",
       entityId: z.id,
       material,
-      center: planToWorld(r.x + r.w / 2, r.y + r.d / 2, 0.01),
-      size: [r.w, 0.02, r.d],
+      center: planToWorld(r.x + r.w / 2, r.y + r.d / 2, thick / 2),
+      size: [r.w, thick, r.d],
       rotation: [0, 0, 0],
     });
   }
@@ -379,24 +389,60 @@ export function interiorGeometry(model: BuildingModel): BoxMember[] {
       out.push(place(u0, u1, 0, p.kickFt, "partition", p.kind === "full" ? "wood" : "floorWood", `kick${i}`));
       if (p.topFt > p.kickFt + 1e-6) out.push(place(u0, u1, p.kickFt, p.topFt, "grille", "grille", `grille${i}`));
     }
-    // Doors: sliding stall door leaf (solid to kick height, grille above), hung on the aisle side.
-    for (const [i, d] of p.doors.entries()) {
-      const leafW = d.widthFt + 0.25;
-      const u0 = d.u - 0.125;
-      const offsetN = thick / 2 + 0.05; // stands off the partition face
-      const mid = u0 + leafW / 2;
-      const x = vertical ? cx + offsetN : p.x0 + mid;
-      const y = vertical ? p.y0 + mid : cy + offsetN;
-      out.push({
-        id: `${p.id}_door${i}`,
-        kind: "stallDoor",
+    // Doors by type (ADR-0014). Local frame: u along the partition, n across it
+    // (+n toward the higher-coordinate side), h up.
+    const placeN = (u0: number, u1: number, h0: number, h1: number, n: number, t: number, kind: BoxMember["kind"], material: BoxMember["material"], suffix: string, entityId: string): BoxMember => {
+      const mid = (u0 + u1) / 2;
+      const x = vertical ? cx + n : p.x0 + mid;
+      const y = vertical ? p.y0 + mid : cy + n;
+      return {
+        id: `${p.id}_${suffix}`,
+        kind,
         layer: "interior",
-        entityId: d.zoneId,
-        material: "door",
-        center: planToWorld(x, y, Math.min(p.topFt, 7) / 2),
-        size: vertical ? [1.5 / 12, Math.min(p.topFt, 7), leafW] : [leafW, Math.min(p.topFt, 7), 1.5 / 12],
+        entityId,
+        material,
+        center: planToWorld(x, y, (h0 + h1) / 2),
+        size: vertical ? [t, h1 - h0, u1 - u0] : [u1 - u0, h1 - h0, t],
         rotation: [0, 0, 0],
-      });
+      };
+    };
+    for (const [i, d] of p.doors.entries()) {
+      const preset = INTERIOR_DOOR_PRESETS[d.type];
+      const entity = d.auto ? d.zoneId : d.id;
+      const h = Math.min(d.heightFt, p.topFt + 1);
+      const u0 = d.u;
+      const u1 = d.u + d.widthFt;
+      const kick = Math.min(p.kickFt, h - 0.5);
+      if (preset.leaf === "none") {
+        if (p.kind === "full") out.push(placeN(u0 - 0.1, u1 + 0.1, h, Math.min(p.topFt, h + 0.6), 0, thick, "partition", "wood", `head${i}`, entity));
+        continue;
+      }
+      if (d.type === "stallSlide") {
+        // Leaf hangs on the aisle side and overlaps the jambs; track runs twice the width in the slide direction.
+        const aisle = -d.zoneSide;
+        const n = aisle * (thick / 2 + 0.06);
+        const leaf0 = u0 - 0.125;
+        const leaf1 = u1 + 0.125;
+        out.push(placeN(leaf0, leaf1, 0.1, kick, n, 1.5 / 12, "stallDoor", "floorWood", `door${i}`, entity));
+        if (h > kick + 0.05) out.push(placeN(leaf0, leaf1, kick, h, n, 1.5 / 12, "stallDoor", "grille", `doorTop${i}`, entity));
+        const trackLen = Math.min(p.lengthFt, d.widthFt * 2 + 0.25);
+        const right = d.swing !== "slideLeft";
+        const t0 = right ? Math.min(leaf0, p.lengthFt - trackLen) : Math.max(0, leaf1 - trackLen);
+        out.push(placeN(t0, t0 + trackLen, h + 0.05, h + 0.3, n, 0.2, "track", "grille", `track${i}`, entity));
+        continue;
+      }
+      if (preset.leaf === "stall") {
+        // Hinged stall / Dutch door in the plane of the partition: solid to kick height, grille above.
+        const gap = d.type === "dutch" ? 0.08 : 0;
+        out.push(placeN(u0 + 0.05, u1 - 0.05, 0.1, kick - gap / 2, 0, 1.5 / 12, "stallDoor", "floorWood", `door${i}`, entity));
+        if (h > kick + 0.05) out.push(placeN(u0 + 0.05, u1 - 0.05, kick + gap / 2, h, 0, 1.5 / 12, "stallDoor", "grille", `doorTop${i}`, entity));
+        continue;
+      }
+      // Solid pre-hung wood / steel door with jambs and a head casing.
+      out.push(placeN(u0 + 0.06, u1 - 0.06, 0.05, h - 0.05, 0, 1.375 / 12, "stallDoor", d.type === "manDoor" ? "door" : "wood", `door${i}`, entity));
+      out.push(placeN(u0 - 0.06, u0 + 0.06, 0, h + 0.12, 0, thick + 0.08, "partition", "trim", `jambL${i}`, entity));
+      out.push(placeN(u1 - 0.06, u1 + 0.06, 0, h + 0.12, 0, thick + 0.08, "partition", "trim", `jambR${i}`, entity));
+      out.push(placeN(u0 - 0.06, u1 + 0.06, h, h + 0.12, 0, thick + 0.08, "partition", "trim", `head${i}`, entity));
     }
   }
   return out;

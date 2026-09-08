@@ -9,6 +9,8 @@ import * as cmd from "@/lib/model/commands";
 import * as zc from "@/lib/model/zones";
 import { applyLayout, type LayoutOptions, type LayoutPattern } from "@/lib/model/layouts";
 import * as lc from "@/lib/model/leanTos";
+import * as dc from "@/lib/model/interiorDoors";
+import * as ec from "@/lib/model/electrical";
 
 import { newId } from "@/lib/model/ids";
 
@@ -63,6 +65,25 @@ export interface ProjectState {
   updateLeanTo: (id: string, patch: Parameters<typeof lc.updateLeanTo>[2]) => void;
   removeLeanTo: (id: string) => void;
   setSlab: (patch: Partial<BuildingModel["foundation"]["slab"]>) => void;
+  setSite: (patch: Partial<Omit<BuildingModel["site"], "verified">> & { verified?: Partial<BuildingModel["site"]["verified"]> }) => void;
+  setPriceOverride: (sku: string, unitCost: number | null) => void;
+  setMaterialColor: (key: "sidingColor" | "roofColor" | "trimColor", value: string) => void;
+
+  addInteriorDoor: (input: dc.AddInteriorDoorInput) => string | null;
+  updateInteriorDoor: (id: string, patch: Parameters<typeof dc.updateInteriorDoor>[2]) => void;
+  moveInteriorDoor: (id: string, offsetFt: number) => void;
+  removeInteriorDoor: (id: string) => void;
+  setAutoDoor: (zoneId: string, on: boolean) => void;
+
+  addFixture: (input: ec.AddFixtureInput) => string | null;
+  updateFixture: (id: string, patch: Parameters<typeof ec.updateFixture>[2]) => void;
+  moveFixture: (id: string, x: number, y: number) => void;
+  removeFixture: (id: string) => void;
+  setElectricalService: (patch: Partial<BuildingModel["electrical"]["service"]>) => void;
+  setWiringMethod: (wiring: BuildingModel["electrical"]["wiring"]) => void;
+  autoPlacePanel: () => void;
+  autoLightZone: (zoneId: string) => void;
+  autoLightAll: () => void;
 }
 
 type FramePatch = Partial<{ [K in keyof Frame]: Frame[K] extends object ? Partial<Frame[K]> : Frame[K] }>;
@@ -144,6 +165,50 @@ export const useProjectStore = create<ProjectState>()(
           if (get().selection === id) set({ selection: null });
         },
         setSlab: (patch) => apply((m) => ({ ...m, foundation: { ...m.foundation, slab: { ...m.foundation.slab, ...patch } }, meta: { ...m.meta, updatedAt: new Date().toISOString() } })),
+        setSite: (patch) =>
+          apply((m) => {
+            const { verified, ...rest } = patch;
+            const site = { ...m.site, ...rest, verified: { ...m.site.verified, ...(verified ?? {}) } };
+            return JSON.stringify(site) === JSON.stringify(m.site) ? m : { ...m, site, meta: { ...m.meta, updatedAt: new Date().toISOString() } };
+          }),
+        setPriceOverride: (sku, unitCost) =>
+          apply((m) => {
+            const priceOverrides = { ...m.priceOverrides };
+            if (unitCost === null || !Number.isFinite(unitCost)) delete priceOverrides[sku];
+            else priceOverrides[sku] = Math.max(0, unitCost);
+            return JSON.stringify(priceOverrides) === JSON.stringify(m.priceOverrides) ? m : { ...m, priceOverrides, meta: { ...m.meta, updatedAt: new Date().toISOString() } };
+          }),
+        setMaterialColor: (key, value) => apply((m) => (m.materials[key] === value ? m : { ...m, materials: { ...m.materials, [key]: value }, meta: { ...m.meta, updatedAt: new Date().toISOString() } })),
+
+        addInteriorDoor: (input) => {
+          const id = input.id ?? newId("door");
+          apply((m) => dc.addInteriorDoor(m, { ...input, id }));
+          return get().model?.zones.some((z) => z.doors.some((d) => d.id === id)) ? id : null;
+        },
+        updateInteriorDoor: (id, patch) => apply((m) => dc.updateInteriorDoor(m, id, patch)),
+        moveInteriorDoor: (id, offsetFt) => apply((m) => dc.moveInteriorDoor(m, id, offsetFt)),
+        removeInteriorDoor: (id) => {
+          apply((m) => dc.removeInteriorDoor(m, id));
+          if (get().selection === id) set({ selection: null });
+        },
+        setAutoDoor: (zoneId, on) => apply((m) => dc.setAutoDoor(m, zoneId, on)),
+
+        addFixture: (input) => {
+          const id = input.id ?? newId("fx");
+          apply((m) => ec.addFixture(m, { ...input, id }));
+          return get().model?.electrical.fixtures.some((f) => f.id === id) ? id : null;
+        },
+        updateFixture: (id, patch) => apply((m) => ec.updateFixture(m, id, patch)),
+        moveFixture: (id, x, y) => apply((m) => ec.moveFixture(m, id, x, y)),
+        removeFixture: (id) => {
+          apply((m) => ec.removeFixture(m, id));
+          if (get().selection === id) set({ selection: null });
+        },
+        setElectricalService: (patch) => apply((m) => ec.setElectricalService(m, patch)),
+        setWiringMethod: (wiring) => apply((m) => ec.setWiringMethod(m, wiring)),
+        autoPlacePanel: () => apply((m) => ec.autoPlacePanel(m)),
+        autoLightZone: (zoneId) => apply((m) => ec.autoLightZone(m, zoneId)),
+        autoLightAll: () => apply((m) => ec.autoLightAll(m)),
         transaction: (fn) => {
           const temporal = useProjectStore.temporal.getState();
           const start = get().model;
