@@ -73,6 +73,22 @@ export const INTERIOR_DOOR_PRESETS: Record<InteriorDoorType, InteriorDoorPreset>
     ],
     unitSku: "door.dutchInterior",
   },
+  aisleSlide: {
+    type: "aisleSlide",
+    label: "Sliding aisle door",
+    hint: "Wide solid door on a track between an aisle and the next space — an entry vestibule, or to close off a wing. Sized to the aisle.",
+    widthFt: 8,
+    heightFt: 8,
+    leaf: "solid",
+    hinged: false,
+    hardware: [
+      { sku: "hw.stallTrack", qty: 2, label: "Box track, 2× door width" },
+      { sku: "hw.stallHanger", qty: 2, label: "Trolley hangers" },
+      { sku: "hw.stallLatch", qty: 1, label: "Slide latch" },
+      { sku: "hw.floorGuide", qty: 1, label: "Floor guide" },
+    ],
+    unitSku: "door.aisleSlide",
+  },
   woodHinged: {
     type: "woodHinged",
     label: "Wood door (room)",
@@ -109,19 +125,26 @@ export const INTERIOR_DOOR_PRESETS: Record<InteriorDoorType, InteriorDoorPreset>
 
 export const INTERIOR_DOOR_TYPES = Object.keys(INTERIOR_DOOR_PRESETS) as InteriorDoorType[];
 
-/** Default door type for a zone: sliding stall doors on pens, wood doors on rooms. */
+/** Default door type for a zone: sliding stall doors on pens, sliding aisle doors on aisles, wood doors on rooms. */
 export function defaultInteriorDoorType(z: Pick<Zone, "type">): InteriorDoorType {
   if (z.type === "pen" || z.type === "kidding") return "stallSlide";
+  if (z.type === "aisle" || z.type === "open") return "aisleSlide";
   if (z.type === "hay" || z.type === "equipment") return "cased";
   return "woodHinged";
 }
 
-/** Default size for a door type on a zone (species door width for stall types). */
-export function defaultInteriorDoorSize(type: InteriorDoorType, species?: Species): { widthFt: number; heightFt: number } {
+/**
+ * Default size for a door type on a zone: species door width for stall types;
+ * a sliding aisle door fills the edge it sits on (4'–12', a foot clear each side).
+ */
+export function defaultInteriorDoorSize(type: InteriorDoorType, species?: Species, edgeLengthFt?: number): { widthFt: number; heightFt: number } {
   const p = INTERIOR_DOOR_PRESETS[type];
   if (p.leaf === "stall" && species) {
     const sp = SPECIES_PRESETS[species];
     return { widthFt: sp.doorFt, heightFt: Math.max(p.heightFt, Math.min(8, sp.partitionTopFt)) };
+  }
+  if (type === "aisleSlide" && edgeLengthFt !== undefined) {
+    return { widthFt: Math.max(4, Math.min(12, Math.floor((edgeLengthFt - 2) * 2) / 2)), heightFt: p.heightFt };
   }
   return { widthFt: p.widthFt, heightFt: p.heightFt };
 }
@@ -168,10 +191,10 @@ export function addInteriorDoor(model: BuildingModel, input: AddInteriorDoorInpu
   const z = model.zones[idx];
   const r = zoneRect(z);
   const type = input.type ?? defaultInteriorDoorType(z);
-  const size = defaultInteriorDoorSize(type, z.species);
+  const len = edgeLengthFt(r, input.side);
+  const size = defaultInteriorDoorSize(type, z.species, len);
   const widthFt = input.widthFt ?? size.widthFt;
   const heightFt = input.heightFt ?? size.heightFt;
-  const len = edgeLengthFt(r, input.side);
   if (widthFt > len - 0.5) return model;
   const centre = input.offsetFt === undefined ? len / 2 - widthFt / 2 : input.offsetFt;
   const offsetFt = Math.min(Math.max(0.25, Math.round(centre / SNAP_FT) * SNAP_FT), len - widthFt - 0.25);

@@ -165,7 +165,7 @@ export function PlanSheet({ model, framing, partitions, electrical, drainage, mo
                     <line x1={px(d.x0)} y1={py(d.y0)} x2={px(d.x1)} y2={py(d.y1)} stroke="#fff" strokeWidth={Math.max(2, 0.4 * scale)} />
                     {INTERIOR_DOOR_PRESETS[d.type].leaf !== "none" ? <line x1={px(d.x0 + (vertical ? n * off : 0))} y1={py(d.y0 + (vertical ? 0 : n * off))} x2={px(d.x1 + (vertical ? n * off : 0))} y2={py(d.y1 + (vertical ? 0 : n * off))} stroke="#1c1b19" strokeWidth={1.2} /> : null}
                     <text x={px((d.x0 + d.x1) / 2 + (vertical ? n * 1.2 : 0))} y={py((d.y0 + d.y1) / 2 + (vertical ? 0 : n * 1.2)) + 3} textAnchor="middle" fontSize={fs - 2} fill="#1c1b19">
-                      {formatFtIn(d.widthFt)} {d.type === "stallSlide" ? "sl" : d.type === "cased" ? "open" : "hng"}
+                      {formatFtIn(d.widthFt)} {INTERIOR_DOOR_PRESETS[d.type].leaf === "none" ? "open" : INTERIOR_DOOR_PRESETS[d.type].hinged ? "hng" : "sl"}
                     </text>
                   </g>
                 );

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createDefaultModel, parseBuildingModel } from "@/lib/model";
 import { addZone, resizeZone, zoneRect } from "@/lib/model/zones";
 import { applyLayout } from "@/lib/model/layouts";
-import { addEndDoors, addInteriorDoor, addZoneDoor, defaultExteriorDoorSpec, endDoorsLabel, findInteriorDoor, moveInteriorDoor, removeInteriorDoor, setAutoDoor, updateInteriorDoor } from "@/lib/model/interiorDoors";
+import { addEndDoors, addInteriorDoor, addZoneDoor, defaultExteriorDoorSpec, defaultInteriorDoorType, endDoorsLabel, findInteriorDoor, moveInteriorDoor, removeInteriorDoor, setAutoDoor, updateInteriorDoor } from "@/lib/model/interiorDoors";
 import { exteriorEdgesOf, isExteriorSide } from "@/lib/model/zones";
 import { derivePartitions, interiorDoors } from "@/lib/interior/partitions";
 import { interiorGeometry } from "@/lib/geometry";
@@ -118,6 +118,22 @@ describe("interior doors", () => {
     expect(n.offsetFt + n.widthFt / 2).toBeCloseTo(m.footprint.kind === "rect" ? m.footprint.wFt - (x + w / 2) : 0, 5);
     // Idempotent: an end that already has a door is skipped.
     expect(addEndDoors(m, aisle.id).added).toEqual([]);
+    expect(() => parseBuildingModel(m)).not.toThrow();
+  });
+
+  it("aisles get a sliding aisle door sized to the aisle on an inside side (an entry vestibule)", () => {
+    let m = addZone(base(), { type: "aisle", rect: { x: 0, y: 0, w: 12, d: 8 }, id: "lock", name: "Vestibule" });
+    m = addZone(m, { type: "aisle", rect: { x: 0, y: 8, w: 12, d: 28 }, id: "main" });
+    expect(defaultInteriorDoorType({ type: "aisle" })).toBe("aisleSlide");
+    m = addZoneDoor(m, { zoneId: "lock", side: "n", id: "d1" });
+    const d = findInteriorDoor(m, "d1")!.door;
+    expect(d).toMatchObject({ type: "aisleSlide", widthFt: 10, heightFt: 8, swing: "slideRight", offsetFt: 1 });
+    const host = derivePartitions(m).find((p) => p.doors.some((x) => x.id === "d1"))!;
+    expect(host.zones.map((z) => z?.id)).toEqual(["lock", "main"]);
+    // On the side facing open floor too.
+    m = addZoneDoor(m, { zoneId: "lock", side: "e", id: "d2" });
+    expect(findInteriorDoor(m, "d2")!.door).toMatchObject({ type: "aisleSlide", widthFt: 6 });
+    expect(interiorGeometry(m).some((b) => b.entityId === "d1" && b.kind === "stallDoor")).toBe(true);
     expect(() => parseBuildingModel(m)).not.toThrow();
   });
 

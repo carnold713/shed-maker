@@ -419,14 +419,17 @@ export function interiorGeometry(model: BuildingModel): BoxMember[] {
         if (p.kind === "full") out.push(placeN(u0 - 0.1, u1 + 0.1, h, Math.min(p.topFt, h + 0.6), 0, thick, "partition", "wood", `head${i}`, entity));
         continue;
       }
-      if (d.type === "stallSlide") {
-        // Leaf hangs on the aisle side and overlaps the jambs; track runs twice the width in the slide direction.
+      if (!preset.hinged) {
+        // Sliding leaf hangs on the aisle side and overlaps the jambs; track runs twice the width in the slide direction.
         const aisle = -d.zoneSide;
         const n = aisle * (thick / 2 + 0.06);
         const leaf0 = u0 - 0.125;
         const leaf1 = u1 + 0.125;
-        out.push(placeN(leaf0, leaf1, 0.1, kick, n, 1.5 / 12, "stallDoor", "floorWood", `door${i}`, entity));
-        if (h > kick + 0.05) out.push(placeN(leaf0, leaf1, kick, h, n, 1.5 / 12, "stallDoor", "grille", `doorTop${i}`, entity));
+        if (preset.leaf === "solid") out.push(placeN(leaf0, leaf1, 0.1, h, n, 1.5 / 12, "stallDoor", "wood", `door${i}`, entity));
+        else {
+          out.push(placeN(leaf0, leaf1, 0.1, kick, n, 1.5 / 12, "stallDoor", "floorWood", `door${i}`, entity));
+          if (h > kick + 0.05) out.push(placeN(leaf0, leaf1, kick, h, n, 1.5 / 12, "stallDoor", "grille", `doorTop${i}`, entity));
+        }
         const trackLen = Math.min(p.lengthFt, d.widthFt * 2 + 0.25);
         const right = d.swing !== "slideLeft";
         const t0 = right ? Math.min(leaf0, p.lengthFt - trackLen) : Math.max(0, leaf1 - trackLen);

@@ -83,6 +83,12 @@ test("M3 layout: stamp stalls, layout generator, grow/fit, doors, edit and delet
   await expect(page.getByTestId("plan-opening-slidingDoor")).toHaveCount(1);
   await expect(page.getByTestId("dock-title")).toContainText("Sliding door");
   await page.keyboard.press("Escape");
+  // An inside side of the aisle (here the north, facing the open floor) gets a sliding aisle door sized to the aisle.
+  await page.getByTestId("plan-zone-aisle").first().click();
+  await page.getByTestId("zone-door-n").click();
+  await expect(page.getByTestId("plan-door-aisleSlide")).toHaveCount(1);
+  await expect(page.getByTestId("dock-title")).toContainText("Sliding aisle door");
+  await page.keyboard.press("Escape");
 
   // One Door tool: with an outside door picked, clicking a stall's inside wall still adds its usual stall door,
   // and with a stall door picked, clicking an outside wall adds a door sized for the space behind it.

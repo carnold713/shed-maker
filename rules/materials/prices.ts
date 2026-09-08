@@ -100,6 +100,7 @@ export const PRICES: PriceItem[] = [
   { sku: "door.stallSlide", description: "Sliding stall door leaf (site-built, grille top)", unit: "each", unitCost: 380, category: "interior", source: "placeholder" },
   { sku: "door.stallHinged", description: "Hinged stall door leaf", unit: "each", unitCost: 320, category: "interior", source: "placeholder" },
   { sku: "door.dutchInterior", description: "Interior Dutch door (two leaves)", unit: "each", unitCost: 520, category: "interior", source: "placeholder" },
+  { sku: "door.aisleSlide", description: "Sliding aisle door leaf, site-built solid (T&G over a 2×4 frame)", unit: "each", unitCost: 520, category: "interior", source: "placeholder" },
   { sku: "door.woodPrehung", description: "Pre-hung wood door, interior", unit: "each", unitCost: 260, category: "doors", source: "placeholder" },
   { sku: "hw.stallTrack", description: "Box track, 8' section with end stops", unit: "each", unitCost: 95, category: "interior", source: "placeholder" },
   { sku: "hw.stallHanger", description: "Trolley hanger", unit: "each", unitCost: 22, category: "interior", source: "placeholder" },

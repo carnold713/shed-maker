@@ -1160,7 +1160,7 @@ function doorGhostAt(model: NonNullable<ReturnType<typeof useProjectStore.getSta
   const zoneSide: -1 | 1 = lower?.id === zone.id ? -1 : 1;
   const side = vertical ? (zoneSide === -1 ? "e" : "w") : zoneSide === -1 ? "n" : "s";
   const type = wanted ?? defaultInteriorDoorType(zone);
-  const w = Math.min(defaultInteriorDoorSize(type, zone.species).widthFt, Math.max(1.5, p.lengthFt - 0.5));
+  const w = Math.min(defaultInteriorDoorSize(type, zone.species, p.lengthFt).widthFt, Math.max(1.5, p.lengthFt - 0.5));
   const u = Math.round((best.u - w / 2) * 2) / 2;
   const uc = Math.max(0.25, Math.min(p.lengthFt - w - 0.25, u));
   const r = zoneRect(zone);

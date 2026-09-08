@@ -7,7 +7,7 @@
 import type { BuildingModel, InteriorDoor, InteriorDoorType, Zone } from "@/lib/model/schema";
 import { zoneRect, type Rect } from "@/lib/model/zones";
 import { SPECIES_PRESETS, type SpeciesPreset } from "@/rules/animals/presets";
-import { defaultInteriorDoorSize, defaultInteriorDoorType, doorSegment } from "@/lib/model/interiorDoors";
+import { INTERIOR_DOOR_PRESETS, defaultInteriorDoorSize, defaultInteriorDoorType, doorSegment } from "@/lib/model/interiorDoors";
 
 export type PartitionKind = "stall" | "full" | "low";
 
@@ -197,7 +197,7 @@ export function derivePartitions(model: BuildingModel): Partition[] {
     const size = defaultInteriorDoorSize(type, z.species);
     const doorW = Math.min(best.lengthFt - 0.5, size.widthFt);
     if (doorW < 2) continue;
-    pushDoor(best, z, best.lengthFt / 2 - doorW / 2, { id: `auto_${z.id}`, type, widthFt: doorW, heightFt: size.heightFt, swing: type === "stallSlide" ? "slideRight" : "out", hinge: "left" }, true);
+    pushDoor(best, z, best.lengthFt / 2 - doorW / 2, { id: `auto_${z.id}`, type, widthFt: doorW, heightFt: size.heightFt, swing: INTERIOR_DOOR_PRESETS[type].hinged ? "out" : "slideRight", hinge: "left" }, true);
   }
   return out;
 }

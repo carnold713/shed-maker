@@ -285,7 +285,7 @@ export const Species = z.enum([
 export type Species = z.infer<typeof Species>;
 
 /** Doors in interior partitions (stall fronts, room doors) — SPEC §24, ADR-0014. */
-export const InteriorDoorType = z.enum(["stallSlide", "stallHinged", "dutch", "woodHinged", "manDoor", "cased"]);
+export const InteriorDoorType = z.enum(["stallSlide", "stallHinged", "dutch", "aisleSlide", "woodHinged", "manDoor", "cased"]);
 export type InteriorDoorType = z.infer<typeof InteriorDoorType>;
 
 export const InteriorDoor = z.object({
