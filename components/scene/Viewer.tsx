@@ -13,6 +13,7 @@ import { Ground } from "./Ground";
 import { Lighting, GROUND_SIZE_FT } from "./Lighting";
 import { createRenderer } from "./renderer";
 import { ClipGroup } from "./ClipGroup";
+import { PostFX } from "./PostFX";
 import { formatFtIn } from "@/lib/units";
 
 const PRESETS: { id: ViewPreset; label: string }[] = [
@@ -84,8 +85,8 @@ export function Viewer() {
           sceneRef.current = scene;
           cameraRef.current = camera;
           gl.localClippingEnabled = true;
-          gl.toneMapping = THREE.ACESFilmicToneMapping;
-          gl.toneMappingExposure = 1.05;
+          gl.toneMapping = THREE.AgXToneMapping;
+          gl.toneMappingExposure = 1.15;
           gl.shadowMap.type = THREE.PCFSoftShadowMap;
         }}
         onPointerMissed={(e) => {
@@ -96,7 +97,9 @@ export function Viewer() {
         }}
         onContextMenu={(e) => e.preventDefault()}
       >
+        <color attach="background" args={["#f3f0ea"]} />
         <Lighting center={[cx, 0, cz]} radius={radius} />
+        <PostFX />
         {iso ? <OrthographicCamera makeDefault position={[cx + 80, 70, cz + 80]} zoom={8} near={-500} far={1000} /> : null}
         <FitCamera bounds={geometry.bounds} nonce={fitNonce} preset={preset} eaveFt={eave} iso={iso} />
         <ClipGroup planes={clippingPlanes}>
@@ -108,7 +111,7 @@ export function Viewer() {
       </Canvas>
 
       {/* View presets */}
-      <div className="glass absolute left-3 top-3 flex items-center gap-1 p-1 text-xs" data-testid="view-presets">
+      <div className="glass absolute left-3 top-32 flex items-center gap-1 p-1 text-xs" data-testid="view-presets">
         {PRESETS.map((p) => (
           <button key={p.id} onClick={() => setPreset(p.id)} aria-pressed={preset === p.id} className={`chip ${preset === p.id ? "chip-on" : ""}`}>
             {p.label}
@@ -121,7 +124,7 @@ export function Viewer() {
       </div>
 
       {/* Layers */}
-      <details className="glass absolute right-3 top-3 text-xs">
+      <details className="glass absolute right-3 top-32 text-xs">
         <summary className="cursor-pointer select-none px-2 py-1 text-muted">Layers</summary>
         <ul className="px-2 pb-2">
           {ALL_LAYERS.map((l) => (

@@ -38,7 +38,7 @@ export function ToolPalette() {
   );
 
   return (
-    <div className="absolute left-3 top-3 flex flex-col gap-1.5" data-testid="tool-palette">
+    <div className="absolute left-3 top-3 z-10 flex flex-col gap-1.5" data-testid="tool-palette">
       <div className="glass flex max-w-[calc(100vw-3rem)] flex-wrap items-center gap-0.5 p-1 whitespace-nowrap">
         {btn("select", "Select", "V", "tool-select")}
         {btn("pen", "Pen", "P", "tool-pen")}

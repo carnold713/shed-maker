@@ -17,14 +17,14 @@ export function Ground({ center, grade, sizeFt = 260, clippingPlanes }: { center
     const ctx = c.getContext("2d")!;
     // Warm paper ground with a vignette.
     const g = ctx.createRadialGradient(px / 2, px / 2, px * 0.15, px / 2, px / 2, px * 0.7);
-    g.addColorStop(0, "#efe9df");
-    g.addColorStop(1, "#d9d2c6");
+    g.addColorStop(0, "#f3f0ea");
+    g.addColorStop(1, "#e6e1d8");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, px, px);
     // Grid: 2' minor, 10' major.
     const ftPerPx = sizeFt / px;
     const minor = 2 / ftPerPx;
-    ctx.strokeStyle = "rgba(90,80,70,0.10)";
+    ctx.strokeStyle = "rgba(90,80,70,0.06)";
     ctx.lineWidth = 1.5;
     for (let i = 0; i <= px; i += minor) {
       ctx.beginPath();
@@ -34,7 +34,7 @@ export function Ground({ center, grade, sizeFt = 260, clippingPlanes }: { center
       ctx.lineTo(px, i);
       ctx.stroke();
     }
-    ctx.strokeStyle = "rgba(90,80,70,0.22)";
+    ctx.strokeStyle = "rgba(90,80,70,0.12)";
     ctx.lineWidth = 2.5;
     for (let i = 0; i <= px; i += minor * 5) {
       ctx.beginPath();
@@ -63,7 +63,7 @@ export function Ground({ center, grade, sizeFt = 260, clippingPlanes }: { center
           textured plane: coplanar faces z-fight (stepped bands across the plate on WebGPU). */}
       <mesh position={[ox, grade - 1 - 1 / 12, oz]}>
         <boxGeometry args={[sizeFt, 2, sizeFt]} />
-        <meshStandardMaterial color="#cfc7ba" roughness={1} clippingPlanes={clippingPlanes} />
+        <meshStandardMaterial color="#d8d2c8" roughness={1} clippingPlanes={clippingPlanes} />
       </mesh>
     </group>
   );

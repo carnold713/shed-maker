@@ -36,6 +36,7 @@ export interface ProjectState {
   setFrame: (patch: Parameters<typeof cmd.setFrame>[1]) => void;
   setRoof: (patch: Partial<Roof>) => void;
   setName: (name: string) => void;
+  setNotes: (notes: string) => void;
   snapFootprintToModule: (moduleFt?: 2 | 4) => void;
   addOpening: (input: cmd.AddOpeningInput) => string | null;
   updateOpening: (id: string, patch: Partial<Omit<Opening, "id" | "wallId">>) => void;
@@ -163,6 +164,7 @@ export const useProjectStore = create<ProjectState>()(
         },
         setRoof: (patch) => apply((m) => cmd.setRoof(m, patch)),
         setName: (name) => apply((m) => cmd.setName(m, name)),
+        setNotes: (notes) => apply((m) => cmd.setNotes(m, notes)),
         snapFootprintToModule: (moduleFt = 2) =>
           apply((m) =>
             m.footprint.kind === "rect"

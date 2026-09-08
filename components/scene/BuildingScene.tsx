@@ -45,19 +45,19 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
   const groups = useMemo<Group[]>(() => {
     const white = renderMode === "white";
     const palette: Record<BoxMember["material"], Omit<Group, "key" | "boxes">> = {
-      siding: { color: white ? "#e8e8e6" : materials.sidingColor, roughness: 0.6, metalness: 0.05 },
-      roofing: { color: white ? "#d9d9d6" : materials.roofColor, roughness: 0.5, metalness: 0.08 },
-      concrete: { color: white ? "#cfcfcc" : "#b9b6ae", roughness: 0.95, metalness: 0 },
-      wood: { color: white ? "#dedcd6" : "#c9a36b", roughness: 0.85, metalness: 0 },
-      ptWood: { color: white ? "#d3d1cb" : "#9d8a5c", roughness: 0.85, metalness: 0 },
+      siding: { color: white ? "#efefec" : materials.sidingColor, roughness: 0.75, metalness: 0.02 },
+      roofing: { color: white ? "#e2e2df" : materials.roofColor, roughness: 0.7, metalness: 0.04 },
+      concrete: { color: white ? "#d9d8d4" : "#d2cfc7", roughness: 0.95, metalness: 0 },
+      wood: { color: white ? "#e6e3dc" : "#dcc39c", roughness: 0.9, metalness: 0 },
+      ptWood: { color: white ? "#dedbd4" : "#c9b48c", roughness: 0.9, metalness: 0 },
       glass: { color: "#9fc4d8", roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.45 },
       door: { color: white ? "#e2e2df" : materials.trimColor, roughness: 0.6, metalness: 0.1 },
       trim: { color: white ? "#efefec" : materials.trimColor, roughness: 0.6, metalness: 0.05 },
       grille: { color: white ? "#9a9a96" : "#3b3f44", roughness: 0.5, metalness: 0.6, transparent: true, opacity: 0.35 },
-      mats: { color: white ? "#c9c9c6" : "#3d3b39", roughness: 0.95, metalness: 0 },
-      gravel: { color: white ? "#d6d6d2" : "#a8a394", roughness: 1, metalness: 0 },
-      dirt: { color: white ? "#d3d0ca" : "#8a6f52", roughness: 1, metalness: 0 },
-      floorWood: { color: white ? "#e0ddd6" : "#a67c4f", roughness: 0.8, metalness: 0 },
+      mats: { color: white ? "#cfcfcc" : "#6b6763", roughness: 0.95, metalness: 0 },
+      gravel: { color: white ? "#dadad6" : "#c2bdb0", roughness: 1, metalness: 0 },
+      dirt: { color: white ? "#d8d5cf" : "#b19a80", roughness: 1, metalness: 0 },
+      floorWood: { color: white ? "#e4e1da" : "#d4b489", roughness: 0.85, metalness: 0 },
     };
     const by = new Map<string, Group>();
     for (const b of geometry.boxes) {

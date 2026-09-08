@@ -52,9 +52,9 @@ export function createDefaultModel(opts: { name?: string; wFt?: number; dFt?: nu
     zones: [],
     fixtures: [],
     materials: {
-      sidingColor: "#d8d2c4",
-      roofColor: "#5c6b78",
-      trimColor: "#f7f4ee",
+      sidingColor: "#efece5",
+      roofColor: "#cfc8bd",
+      trimColor: "#ffffff",
       wainscot: { enabled: false, heightFt: 3, color: "#5b5f63" },
     },
     overrides: [],

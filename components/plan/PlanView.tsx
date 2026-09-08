@@ -67,7 +67,7 @@ export function PlanView() {
   const W = fp?.kind === "rect" ? fp.wFt : 0;
   const D = fp?.kind === "rect" ? fp.dFt : 0;
 
-  const margin = 56;
+  const margin = 64;
   const scale = useMemo(() => {
     if (!W || !D) return 10;
     return Math.max(0.5, Math.min((size.w - 2 * margin) / W, (size.h - 2 * margin) / D));

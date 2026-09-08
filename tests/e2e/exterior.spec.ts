@@ -44,12 +44,12 @@ test("exterior tools: door and window palettes, lean-to, concrete pad", async ({
   await expect(page.getByTestId("plan-leanto-s")).toHaveCount(0);
 
   // 3D exterior with the pad and awning; autosave; reload keeps everything.
-  await page.getByRole("button", { name: "3D" }).click();
+  await page.getByRole("button", { name: "3D", exact: true }).click();
   await page.waitForTimeout(500);
   await page.screenshot({ path: "test-results/exterior.png" });
   await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 10_000 });
   await page.reload();
-  await page.getByRole("button", { name: "Split" }).click();
+  await page.getByRole("button", { name: "Split", exact: true }).click();
   await expect(page.getByTestId("plan-leanto-w")).toHaveCount(1);
   await expect(page.getByTestId("plan-opening-rollUpDoor")).toHaveCount(1);
 });

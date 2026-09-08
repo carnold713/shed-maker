@@ -73,6 +73,12 @@ export function setName(model: BuildingModel, name: string): BuildingModel {
   return touch({ ...model, meta: { ...model.meta, name: trimmed } });
 }
 
+export function setNotes(model: BuildingModel, notes: string): BuildingModel {
+  const trimmed = notes.trim();
+  if ((model.meta.notes ?? "") === trimmed) return model;
+  return touch({ ...model, meta: { ...model.meta, notes: trimmed || undefined } });
+}
+
 export function setOrientation(model: BuildingModel, deg: number): BuildingModel {
   const d = ((deg % 360) + 360) % 360;
   return touch({ ...model, site: { ...model.site, orientationDeg: d } });

@@ -13,7 +13,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
  */
 export const GROUND_SIZE_FT = 160;
 
-export function Lighting({ center, radius }: { center: [number, number, number]; radius: number }) {
+export function Lighting({ center }: { center: [number, number, number]; radius?: number }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const invalidate = useThree((s) => s.invalidate);
@@ -48,7 +48,7 @@ export function Lighting({ center, radius }: { center: [number, number, number];
         return;
       }
       scene.environment = env;
-      scene.environmentIntensity = 0.55;
+      scene.environmentIntensity = 0.9;
       invalidate();
     })().catch((e) => console.warn("[viewer] environment lighting unavailable", e));
     return () => {
@@ -84,17 +84,17 @@ export function Lighting({ center, radius }: { center: [number, number, number];
   }, [shadowExtent, cx, cz, invalidate]);
   return (
     <>
-      <hemisphereLight args={["#fff4e6", "#b9c4cf", 0.55]} />
+      <hemisphereLight args={["#fffaf2", "#cfd6dc", 0.9]} />
       <directionalLight
         ref={keyRef}
         position={[cx - 45, 110, cz + 85]}
-        intensity={2.4}
-        color="#fff1dc"
+        intensity={1.9}
+        color="#fff4e4"
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.0002}
-        shadow-normalBias={0.03}
-        shadow-radius={4}
+        shadow-normalBias={0.05}
+        shadow-radius={10}
         shadow-camera-left={-shadowExtent}
         shadow-camera-right={shadowExtent}
         shadow-camera-top={shadowExtent}
@@ -102,7 +102,9 @@ export function Lighting({ center, radius }: { center: [number, number, number];
         shadow-camera-near={1}
         shadow-camera-far={400}
       />
-      <directionalLight position={[cx - radius, radius * 0.5, cz - radius * 0.6]} intensity={0.5} color="#cfe0ff" />
+      {/* Broad fills from two sides stand in for softbox panels. */}
+      <directionalLight position={[cx + 80, 50, cz - 60]} intensity={0.55} color="#e8f0ff" />
+      <directionalLight position={[cx - 70, 30, cz + 90]} intensity={0.35} color="#fff0e0" />
     </>
   );
 }
