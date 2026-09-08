@@ -2,6 +2,8 @@
 
 import { ALL_LAYERS, LAYER_LABEL, PRESET_LABEL, useViewStore, type ViewPreset } from "@/lib/store/useViewStore";
 import { Popover, MenuRow, MenuLabel, MenuDivider } from "@/components/ui/Popover";
+import { useProjectStore } from "@/lib/store/useProjectStore";
+import { zoneRect } from "@/lib/model/zones";
 import { Icon } from "@/components/ui/Icon";
 
 const PRESETS: { id: ViewPreset; hint: string; testId: string }[] = [
@@ -18,6 +20,16 @@ export function ViewMenu() {
   const renderMode = useViewStore((s) => s.renderMode);
   const setRenderMode = useViewStore((s) => s.setRenderMode);
   const iso = useViewStore((s) => s.isometric);
+  const walkOn = useViewStore((s) => s.walk.on);
+  const stopWalk = useViewStore((s) => s.stopWalk);
+  const startWalk = useViewStore((s) => s.startWalk);
+  const model = useProjectStore((s) => s.model);
+  const startWalkInside = () => {
+    const aisle = model?.zones.find((z) => z.type === "aisle");
+    const r = aisle ? zoneRect(aisle) : null;
+    const fp = model?.footprint.kind === "rect" ? model.footprint : { wFt: 24, dFt: 36 };
+    startWalk(r ? r.x + r.w / 2 : fp.wFt / 2, r ? r.y + Math.min(4, r.d / 2) : 3);
+  };
   const setIso = useViewStore((s) => s.setIsometric);
   const visible = useViewStore((s) => s.visibleLayers);
   const toggleLayer = useViewStore((s) => s.toggleLayer);
@@ -44,6 +56,9 @@ export function ViewMenu() {
       </MenuRow>
       <MenuRow active={iso} onClick={() => setIso(!iso)} hint="Flat, game-like camera with no perspective (I)" testId="iso-toggle">
         No perspective
+      </MenuRow>
+      <MenuRow active={walkOn} onClick={() => (walkOn ? stopWalk() : startWalkInside())} hint="Stand inside at eye height and look around; a little map in the corner moves you" testId="walk-toggle">
+        Walk inside
       </MenuRow>
       <MenuDivider />
       <MenuLabel>Show</MenuLabel>

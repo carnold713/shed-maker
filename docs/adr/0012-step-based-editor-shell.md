@@ -18,3 +18,7 @@ The M3 shell showed everything at once: four ways to change the view, checks in 
 - `Toolbar`, `ToolPalette`, `BottomCards`, `InspectorDock`, `ProjectPanel`, `StageHeader` are gone; `Editor` composes `Rail`, `TopBar`, `Stage`, `Dock`, `StatusBar`.
 - Test ids for e2e moved with the controls (`rail-step-*`, `stage-*`, `view-*`, `*-picker` selects, `dock-back`); specs were rewritten in the same change.
 - Field inputs refuse out-of-range values with a reason instead of silently reverting (`components/ui/FtInput.tsx`).
+
+## Addendum 2026-09-08 — walk inside (first-person view)
+
+The 3D view has a first-person mode (View menu "Walk inside", or the mini map's "Walk inside"): the camera stands at a plan point at a person's eye height (default 6', editable), dragging on the canvas turns it in place like a street view (grab the world), the wheel zooms, W A S D / arrows walk, Q / E turn, Esc leaves. A miniature overhead plan sits in the corner of the 3D view whenever the Inside preset or the walk is on: click anywhere on it to drop in there, drag the person to move, the cone shows the view. State is `walk` in the view store (`components/scene/WalkControls.tsx`, `components/scene/MiniMap.tsx`); orbit controls and camera fitting are suspended while walking.

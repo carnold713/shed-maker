@@ -57,6 +57,19 @@ export type RenderMode = "realistic" | "white";
 
 export type PlanTool = "select" | "pen" | "aisle" | "room" | "door" | "window" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "run" | "fence" | "erase";
 
+export interface WalkState {
+  on: boolean;
+  x: number;
+  y: number;
+  /** Eye height above the floor, feet (a person: 5'–6'). */
+  eyeFt: number;
+  /** Clockwise from plan north, degrees. */
+  yawDeg: number;
+  /** Up is positive, degrees. */
+  pitchDeg: number;
+  fovDeg: number;
+}
+
 export interface ContextTarget {
   kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "drainOutlet" | "run" | "fence" | "fenceVertex";
   /** For fence corners: which point. */
@@ -100,6 +113,8 @@ export interface ViewState {
   siteSurface: "plan" | "map";
   /** Orthographic isometric camera (game-like) instead of perspective. */
   isometric: boolean;
+  /** First-person walk-through: standing at (x, y) plan feet, eyes `eyeFt` up, looking `yawDeg` clockwise from plan north. */
+  walk: WalkState;
   /** Grow the building automatically when a zone lands outside it (SPEC §18.2 "Just do it"). */
   autoGrow: boolean;
   /** Which editor step is active and how the stage is split (per step). */
@@ -125,6 +140,9 @@ export interface ViewState {
   setToolWindowKey: (k: string) => void;
   setAutoGrow: (v: boolean) => void;
   setIsometric: (v: boolean) => void;
+  setWalk: (patch: Partial<WalkState>) => void;
+  startWalk: (x: number, y: number) => void;
+  stopWalk: () => void;
   setToolInteriorDoorType: (t: string) => void;
   setToolFixtureKind: (k: string) => void;
   setToolDrainKind: (k: "floor" | "trench" | "outlet") => void;
@@ -150,6 +168,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   toolWindowKey: "w34",
   autoGrow: true,
   isometric: false,
+  walk: { on: false, x: 12, y: 18, eyeFt: 6, yawDeg: 0, pitchDeg: 0, fovDeg: 70 },
   toolInteriorDoorType: "stallSlide",
   toolFixtureKind: "light",
   toolDrainKind: "floor",
@@ -181,6 +200,9 @@ export const useViewStore = create<ViewState>()((set) => ({
   setToolWindowKey: (toolWindowKey) => set({ toolWindowKey, tool: "window", hint: null }),
   setAutoGrow: (autoGrow) => set({ autoGrow }),
   setIsometric: (isometric) => set({ isometric }),
+  setWalk: (patch) => set((s) => ({ walk: { ...s.walk, ...patch, pitchDeg: Math.max(-80, Math.min(80, patch.pitchDeg ?? s.walk.pitchDeg)), fovDeg: Math.max(30, Math.min(100, patch.fovDeg ?? s.walk.fovDeg)), eyeFt: Math.max(1, Math.min(12, patch.eyeFt ?? s.walk.eyeFt)) } })),
+  startWalk: (x, y) => set((s) => ({ walk: { ...s.walk, on: true, x, y }, isometric: false })),
+  stopWalk: () => set((s) => ({ walk: { ...s.walk, on: false } })),
   setToolInteriorDoorType: (toolInteriorDoorType) => set({ toolInteriorDoorType, tool: "interiorDoor", hint: null }),
   setToolFixtureKind: (toolFixtureKind) => set({ toolFixtureKind, tool: "fixture", hint: null }),
   setToolDrainKind: (toolDrainKind) => set({ toolDrainKind, tool: "drain", hint: null }),

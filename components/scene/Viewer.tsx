@@ -14,6 +14,8 @@ import { Lighting } from "./Lighting";
 import { createRenderer } from "./renderer";
 import { ClipGroup } from "./ClipGroup";
 import { PostFX } from "./PostFX";
+import { WalkControls } from "./WalkControls";
+import { MiniMap } from "./MiniMap";
 
 /**
  * 3D viewer: outside, roof-off, framing and inside presets with per-layer
@@ -28,6 +30,7 @@ export function Viewer() {
   const openContextMenu = useViewStore((s) => s.openContextMenu);
   const select = useProjectStore((s) => s.select);
   const iso = useViewStore((s) => s.isometric);
+  const walkOn = useViewStore((s) => s.walk.on);
   const glRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.Camera | null>(null);
@@ -60,7 +63,7 @@ export function Viewer() {
   const grade = -(model.foundation.slab.aboveGradeIn / 12);
 
   return (
-    <div className="relative h-full w-full" data-testid="viewer" onPointerEnter={() => setHint("Drag to orbit · right-drag to pan · scroll to zoom · click anything for its details")} onPointerLeave={() => setHint(null)}>
+    <div className="relative h-full w-full" data-testid="viewer" data-walk={walkOn ? "1" : "0"} onPointerEnter={() => setHint(walkOn ? "Drag to look around · scroll to zoom · W A S D or the arrows to walk · Q and E turn · click the little map to jump somewhere · Esc to leave" : "Drag to orbit · right-drag to pan · scroll to zoom · click anything for its details")} onPointerLeave={() => setHint(null)}>
       <Canvas
         frameloop="demand"
         shadows="soft"
@@ -88,15 +91,16 @@ export function Viewer() {
         <fog attach="fog" args={["#f3f0ea", 140, 900]} />
         <Lighting center={[cx, 0, cz]} radius={radius} />
         <PostFX />
-        {iso ? <OrthographicCamera makeDefault position={[cx + 80, 70, cz + 80]} zoom={8} near={-500} far={1000} /> : null}
-        <FitCamera bounds={geometry.bounds} nonce={fitNonce} preset={preset} eaveFt={eave} iso={iso} />
+        {iso && !walkOn ? <OrthographicCamera makeDefault position={[cx + 80, 70, cz + 80]} zoom={8} near={-500} far={1000} /> : null}
+        {walkOn ? <WalkControls /> : <FitCamera bounds={geometry.bounds} nonce={fitNonce} preset={preset} eaveFt={eave} iso={iso} />}
         <ClipGroup planes={clippingPlanes}>
           <BuildingScene geometry={geometry} materials={model.materials} clippingPlanes={clippingPlanes} />
           <Ground center={[cx, cz]} grade={grade} clippingPlanes={clippingPlanes} />
         </ClipGroup>
-        <OrbitControls maxPolarAngle={Math.PI / 2 - 0.02} minDistance={2} maxDistance={400} makeDefault mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />
+        {walkOn ? null : <OrbitControls maxPolarAngle={Math.PI / 2 - 0.02} minDistance={2} maxDistance={400} makeDefault mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }} />}
         <ClipShadowFix />
       </Canvas>
+      {preset === "interior" || walkOn ? <MiniMap /> : null}
 
     </div>
   );

@@ -171,6 +171,11 @@ function useKeyboardShortcuts() {
         return;
       }
       // Escape ladder: menu → tool → selection.
+      if (e.key === "Escape" && vs.walk.on) {
+        e.preventDefault();
+        vs.stopWalk();
+        return;
+      }
       if (e.key === "Escape") {
         if (vs.contextMenu) vs.closeContextMenu();
         else if (vs.tool !== "select") vs.setTool("select");
