@@ -37,6 +37,15 @@ describe("outdoor runs", () => {
     expect(siteExtent(m)).toEqual({ x: 0, y: -50, w: 24, d: 86 });
   });
 
+  it("a pen on two outside walls gets its run on the wall with its door", () => {
+    // 12' × 12' pen in the south-west corner: south and west walls are both outside walls; the door is on the west.
+    let m = addZone(base(), { type: "pen", species: "horse", rect: { x: 0, y: 0, w: 12, d: 12 }, id: "c" });
+    m = { ...m, openings: [...m.openings, { id: "dd", wallId: "wall_ext_w", type: "dutchDoor", offsetFt: 36 - 8, widthFt: 4, heightFt: 7, sillFt: 0, swing: "out", hardware: [] }] };
+    m = addRun(m, { zoneId: "c", id: "r" });
+    expect(m.runs[0].rect).toMatchObject({ x: -50, y: 0, w: 50, d: 12 });
+    expect(m.runs[0].gates[0].side).toBe("w");
+  });
+
   it("wall-click runs, pens found along a wall, and staying outside the walls", () => {
     let m = addZone(base(), { type: "pen", species: "goat", rect: { x: 12, y: 24, w: 12, d: 12 }, id: "g" });
     expect(penAtWall(m, "e", 30)?.id).toBe("g"); // east wall runs south→north; the pen spans y 24–36

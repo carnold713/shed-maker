@@ -92,7 +92,7 @@ export function SiteMap() {
       planToLatLng(frame, { x: ext.x, y: ext.y + ext.d }),
       planToLatLng(frame, { x: ext.x + ext.w, y: ext.y + ext.d }),
     ];
-    map.fitBounds(L.latLngBounds(corners.map((c) => L.latLng(c.lat, c.lng))), { padding: [80, 80], maxZoom: 20, animate: false });
+    map.fitBounds(L.latLngBounds(corners.map((c) => L.latLng(c.lat, c.lng))), { padding: [80, 80], maxZoom: 21, animate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame?.origin.lat, frame?.origin.lng, located]);
 
@@ -106,7 +106,7 @@ export function SiteMap() {
       planToLatLng(frame, { x: ext.x, y: ext.y + ext.d }),
       planToLatLng(frame, { x: ext.x + ext.w, y: ext.y + ext.d }),
     ];
-    map.fitBounds(L.latLngBounds(corners.map((c) => L.latLng(c.lat, c.lng))), { padding: [80, 80], maxZoom: 20 });
+    map.fitBounds(L.latLngBounds(corners.map((c) => L.latLng(c.lat, c.lng))), { padding: [80, 80], maxZoom: 21 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitNonce]);
 
@@ -239,13 +239,20 @@ export function SiteMap() {
           {shapes.runs.map((r) => {
             const c = toPx(r.center);
             const sel = selection === r.id;
+            // Label only when the run is big enough on screen to carry it.
+            const p0 = toPx(r.pts[0]);
+            const p2 = toPx(r.pts[2]);
+            const spanPx = Math.min(Math.abs(p2.x - p0.x) + Math.abs(p2.y - p0.y), Math.hypot(p2.x - p0.x, p2.y - p0.y));
+            const label = spanPx > 160 ? `${r.name} · ${r.area.toLocaleString()} sq ft` : spanPx > 70 ? r.name : "";
             return (
               <g key={r.id} className="pointer-events-auto cursor-pointer" onPointerDown={(e) => { e.stopPropagation(); select(r.id); }} data-testid="map-run">
                 <polygon points={poly(r.pts)} fill="#9ccc65" fillOpacity={sel ? 0.5 : 0.35} stroke={sel ? "#b5532a" : "#f4ffe8"} strokeWidth={sel ? 3 : 2} strokeDasharray={sel ? undefined : "8 4"} />
                 {r.gates.map((g) => { const a = toPx(g.a); const b = toPx(g.b); return <line key={g.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#fff" strokeWidth={5} />; })}
-                <text x={c.x} y={c.y} textAnchor="middle" fontSize={12} fontWeight={600} fill="#fff" stroke="#2f4a22" strokeWidth={3} paintOrder="stroke" pointerEvents="none">
-                  {r.name} · {r.area.toLocaleString()} sq ft
-                </text>
+                {label ? (
+                  <text x={c.x} y={c.y} textAnchor="middle" fontSize={12} fontWeight={600} fill="#fff" stroke="#2f4a22" strokeWidth={3} paintOrder="stroke" pointerEvents="none">
+                    {label}
+                  </text>
+                ) : null}
               </g>
             );
           })}
@@ -258,9 +265,9 @@ export function SiteMap() {
             <polygon points={poly(shapes.footprint)} fill={model.materials.roofColor ?? "#b5532a"} fillOpacity={0.85} stroke="#fff" strokeWidth={2} />
             <polyline points={poly(shapes.ridge)} fill="none" stroke="#fff" strokeWidth={1} strokeOpacity={0.8} />
             {shapes.doors.map((d) => { const a = toPx(d.a); const b = toPx(d.b); return <line key={d.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#ffe9c9" strokeWidth={4} />; })}
-            {px ? (
+            {px && fp && Math.min(fp.wFt, fp.dFt) / Math.max(ftPerPx, 1e-6) > 40 ? (
               <text x={px.c.x} y={px.c.y + 4} textAnchor="middle" fontSize={12} fontWeight={700} fill="#fff" stroke="#3a2a1f" strokeWidth={3} paintOrder="stroke" pointerEvents="none">
-                {fp ? `${fp.wFt}′ × ${fp.dFt}′` : ""}
+                {`${fp.wFt}′ × ${fp.dFt}′`}
               </text>
             ) : null}
           </g>

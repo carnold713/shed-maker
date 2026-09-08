@@ -8,7 +8,7 @@
  */
 import type { BuildingModel, FenceKind, Run, RunGate, Species, Zone } from "./schema";
 import { newId } from "./ids";
-import { exteriorEdgesOf, zoneRect, type Rect } from "./zones";
+import { exteriorEdgesOf, zoneRect, type ExteriorEdge, type Rect } from "./zones";
 import { SPECIES_PRESETS } from "@/rules/animals/presets";
 
 export type Side = "n" | "s" | "e" | "w";
@@ -265,9 +265,10 @@ export function addRun(model: BuildingModel, input: AddRunInput): BuildingModel 
   } else if (zone) {
     const edges = exteriorEdgesOf(model, zone);
     if (!edges.length) return model;
-    // Prefer the wall that carries the pen's outside door.
-    const doorWall = model.openings.find((o) => o.zoneId === zone.id)?.wallId;
-    const edge = edges.find((e) => `wall_ext_${e.side}` === doorWall) ?? edges[0];
+    // Prefer the wall with a door out of this pen (its own Dutch door, or any door in its span), then the longest outside edge.
+    const hasDoor = (e: ExteriorEdge) =>
+      model.openings.some((o) => o.type !== "window" && o.wallId === `wall_ext_${e.side}` && (o.zoneId === zone.id || (o.offsetFt + o.widthFt > e.centerFt - e.lengthFt / 2 + 1e-6 && o.offsetFt < e.centerFt + e.lengthFt / 2 - 1e-6)));
+    const edge = edges.find(hasDoor) ?? edges.slice().sort((a, b) => b.lengthFt - a.lengthFt)[0];
     const r = zoneRect(zone);
     const width = input.widthFt ?? edge.lengthFt;
     const depth = input.depthFt ?? defaultRunDepth(species, headCount, width);
