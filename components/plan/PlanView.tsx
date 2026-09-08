@@ -87,12 +87,71 @@ export function PlanView() {
   const D = fp?.kind === "rect" ? fp.dFt : 0;
 
   const margin = 64;
-  const scale = useMemo(() => {
+  const baseScale = useMemo(() => {
     if (!W || !D) return 10;
     return Math.max(0.5, Math.min((size.w - 2 * margin) / W, (size.h - 2 * margin) / D));
   }, [W, D, size]);
-  const ox = (size.w - W * scale) / 2;
-  const oy = (size.h + D * scale) / 2;
+  // Zoom (1 = fit) and pan (px) on top of the fitted view; F / Fit resets both.
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const fitNonce = useViewStore((s) => s.fitNonce);
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [fitNonce]);
+  const scale = baseScale * zoom;
+  const ox = (size.w - W * scale) / 2 + pan.x;
+  const oy = (size.h + D * scale) / 2 + pan.y;
+  const navRef = useRef({ zoom, pan, size, W, D, baseScale });
+  navRef.current = { zoom, pan, size, W, D, baseScale };
+  /** Zoom by a factor about a wrapper-relative pixel, keeping the plan point under it fixed. */
+  const zoomAt = useCallback((cx: number, cy: number, factor: number) => {
+    const n = navRef.current;
+    const z1 = Math.min(8, Math.max(0.25, n.zoom * factor));
+    if (z1 === n.zoom) return;
+    const s0 = n.baseScale * n.zoom;
+    const s1 = n.baseScale * z1;
+    const ox0 = (n.size.w - n.W * s0) / 2 + n.pan.x;
+    const oy0 = (n.size.h + n.D * s0) / 2 + n.pan.y;
+    const x = (cx - ox0) / s0;
+    const y = (oy0 - cy) / s0;
+    setZoom(z1);
+    setPan({ x: cx - x * s1 - (n.size.w - n.W * s1) / 2, y: cy + y * s1 - (n.size.h + n.D * s1) / 2 });
+  }, []);
+  // Wheel: two-finger scroll pans, pinch / Ctrl+wheel zooms (design-tool convention). Non-passive so the page never scrolls.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      if (e.ctrlKey || e.metaKey) zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-e.deltaY * 0.0025));
+      else setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoomAt]);
+  // Space + drag pans with any tool armed.
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.key === " " && !(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT"))) {
+        e.preventDefault();
+        setSpaceHeld(true);
+      }
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === " ") setSpaceHeld(false);
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
+  const justPanned = useRef(false);
   const px = useCallback((x: number) => ox + x * scale, [ox, scale]);
   const py = useCallback((y: number) => oy - y * scale, [oy, scale]);
   const toPlan = useCallback(
@@ -110,7 +169,8 @@ export function PlanView() {
     | { kind: "zoneResize"; id: string; handle: Handle; start: Rect }
     | { kind: "draw"; x0: number; y0: number; moved: boolean }
     | { kind: "doorMove"; id: string; vertical: boolean; origin: number; grabFt: number }
-    | { kind: "fixtureMove"; id: string; grabX: number; grabY: number };
+    | { kind: "fixtureMove"; id: string; grabX: number; grabY: number }
+    | { kind: "pan"; startX: number; startY: number; panX: number; panY: number; moved: boolean };
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const endDrag = useRef<(() => void) | null>(null);
@@ -139,6 +199,7 @@ export function PlanView() {
       commitDraw();
       setGhost(null);
     }
+    if (d?.kind === "pan") justPanned.current = d.moved;
     endDrag.current?.();
     dragRef.current = null;
     setDrag(null);
@@ -150,6 +211,13 @@ export function PlanView() {
       const p = toPlan(e, e.currentTarget);
       setCursorFt(p);
       const d = dragRef.current;
+      if (d?.kind === "pan") {
+        const dx = e.clientX - d.startX;
+        const dy = e.clientY - d.startY;
+        if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
+        setPan({ x: d.panX + dx, y: d.panY + dy });
+        return;
+      }
       if (!d) {
         if (tool === "interiorDoor") {
           setDoorGhost(doorGhostAt(model, partitions, p.x, p.y, toolInteriorDoorType));
@@ -258,7 +326,8 @@ export function PlanView() {
   }
 
   /** Hover line for the status bar: noun · fact · verb (UX audit §3.8). */
-  const hover = (text: string | null) => setHint(text);
+  const PLAN_HINT = "Drag empty space to move the plan · scroll to move · Ctrl+scroll to zoom · F to fit";
+  const hover = (text: string | null) => setHint(text ?? (tool === "select" ? PLAN_HINT : null));
 
   /** Preset size for the active stamp tool, [w, d] feet. */
   function toolSize(): [number, number] {
@@ -293,7 +362,14 @@ export function PlanView() {
   const wallAt = (w: Wall) => ({ f: wallFrame(w), w });
 
   return (
-    <div ref={wrapRef} className={`relative h-full w-full select-none overflow-hidden bg-[#faf8f4] ${tool === "erase" ? "cursor-not-allowed" : tool !== "select" ? "cursor-crosshair" : ""}`}>
+    <div
+      ref={wrapRef}
+      className={`relative h-full w-full select-none overflow-hidden bg-[#faf8f4] ${drag?.kind === "pan" ? "cursor-grabbing" : spaceHeld ? "cursor-grab" : tool === "erase" ? "cursor-not-allowed" : tool !== "select" ? "cursor-crosshair" : ""}`}
+      onPointerEnter={() => setHint(tool === "select" ? PLAN_HINT : null)}
+      onPointerLeave={() => setHint(null)}
+      data-testid="plan-wrap"
+      data-zoom={Math.round(zoom * 100)}
+    >
       <svg
         width={size.w}
         height={size.h}
@@ -306,8 +382,15 @@ export function PlanView() {
           setCursorFt(null);
         }}
         onPointerDown={(e) => {
-          if (e.button !== 0 || !model) return;
+          if (!model) return;
           const onEmpty = e.target === e.currentTarget || (e.target as Element).getAttribute("data-plan-bg") === "1";
+          if (e.button === 1 || (e.button === 0 && (spaceHeld || (tool === "select" && onEmpty)))) {
+            e.preventDefault();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            beginDrag({ kind: "pan", startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, moved: false });
+            return;
+          }
+          if (e.button !== 0) return;
           if (tool === "fixture" && (onEmpty || (e.target as Element).closest("[data-zone-id]"))) {
             const p = toPlan(e, e.currentTarget);
             if (fixtureGhost) placeFixture(fixtureGhost.x, fixtureGhost.y);
@@ -325,6 +408,10 @@ export function PlanView() {
           }
         }}
         onClick={(e) => {
+          if (justPanned.current) {
+            justPanned.current = false;
+            return;
+          }
           if (tool !== "select") return; // a stamp just selected its new zone
           if (e.target === e.currentTarget || (e.target as Element).getAttribute("data-plan-bg") === "1") select(null);
         }}
@@ -754,6 +841,28 @@ export function PlanView() {
           </text>
         </g>
       </svg>
+      <div className="glass absolute bottom-2 left-2 flex items-center gap-0.5 p-0.5 text-[11px]" data-testid="plan-nav">
+        <button className="chip px-2" onClick={() => zoomAt(size.w / 2, size.h / 2, 0.8)} title="Zoom out (Ctrl+scroll)" aria-label="Zoom out" data-testid="plan-zoom-out">
+          −
+        </button>
+        <span className="w-10 text-center font-mono text-muted" data-testid="plan-zoom">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button className="chip px-2" onClick={() => zoomAt(size.w / 2, size.h / 2, 1.25)} title="Zoom in (Ctrl+scroll)" aria-label="Zoom in" data-testid="plan-zoom-in">
+          +
+        </button>
+        <button
+          className="chip px-2"
+          onClick={() => {
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+          }}
+          title="Fit the plan (F)"
+          data-testid="plan-fit"
+        >
+          Fit
+        </button>
+      </div>
       <div className="pointer-events-none absolute bottom-1.5 right-3 font-mono text-[10.5px] text-muted/80">
         {cursorFt ? `${formatFtIn(Math.max(0, cursorFt.x))}, ${formatFtIn(Math.max(0, cursorFt.y))}` : ""}
         {drag?.kind === "opening" ? " · Shift = 1' snap" : ""}

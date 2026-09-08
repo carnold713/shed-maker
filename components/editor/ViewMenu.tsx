@@ -44,7 +44,7 @@ export function ViewMenu() {
           {PRESET_LABEL[p.id]}
         </MenuRow>
       ))}
-      <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-muted">
+      <div className="flex items-center gap-2 whitespace-nowrap px-2.5 py-1.5 text-xs text-muted">
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={cut !== null} onChange={(e) => setCut(e.target.checked ? 4 : null)} data-testid="cut-toggle" /> Cut at
         </label>
@@ -62,7 +62,7 @@ export function ViewMenu() {
       <MenuLabel>Show</MenuLabel>
       <div className="grid grid-cols-2 gap-x-2 px-1">
         {ALL_LAYERS.map((l) => (
-          <label key={l} className="flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs hover:bg-black/5">
+          <label key={l} className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-1 text-xs hover:bg-black/5">
             <input type="checkbox" checked={visible.has(l)} onChange={() => toggleLayer(l)} /> {LAYER_LABEL[l]}
           </label>
         ))}

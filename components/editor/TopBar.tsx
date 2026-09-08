@@ -99,7 +99,7 @@ export function TopBar() {
           </>
         )}
       </Popover>
-      {toast ? <div className="glass absolute right-3 top-[calc(100%+6px)] z-30 px-3 py-2 text-xs">{toast}</div> : null}
+      {toast ? <div className="menu absolute right-3 top-[calc(100%+6px)] z-30 px-3 py-2 text-xs">{toast}</div> : null}
     </header>
   );
 }

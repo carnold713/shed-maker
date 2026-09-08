@@ -96,6 +96,8 @@ export interface ViewState {
   /** Which editor step is active and how the stage is split (per step). */
   step: Step;
   stageViews: Record<Step, StageView>;
+  /** Plan share of the stage in "both", per step (user-draggable). */
+  stagePlanPcts: Record<Step, number>;
   /** Contextual status line: what the pointer is over, or what the armed tool will do. */
   hint: string | null;
 
@@ -119,6 +121,7 @@ export interface ViewState {
   setToolFixtureKind: (k: string) => void;
   setStep: (s: Step) => void;
   setStageView: (v: StageView) => void;
+  setStagePlanPct: (pct: number) => void;
   setHint: (h: string | null) => void;
 }
 
@@ -141,6 +144,7 @@ export const useViewStore = create<ViewState>()((set) => ({
   toolFixtureKind: "light",
   step: "layout",
   stageViews: { ...STEP_STAGE_VIEW },
+  stagePlanPcts: { ...STEP_PLAN_PCT },
   hint: null,
 
   setPreset: (preset) =>
@@ -183,6 +187,7 @@ export const useViewStore = create<ViewState>()((set) => ({
       };
     }),
   setStageView: (v) => set((s) => ({ stageViews: { ...s.stageViews, [s.step]: v } })),
+  setStagePlanPct: (pct) => set((s) => ({ stagePlanPcts: { ...s.stagePlanPcts, [s.step]: Math.min(75, Math.max(25, pct)) } })),
   setHint: (hint) => set((s) => (s.hint === hint ? {} : { hint })),
 }));
 

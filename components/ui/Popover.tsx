@@ -36,7 +36,7 @@ export function Popover({ button, children, align = "right", className = "", tes
         {button(open)}
       </div>
       {open ? (
-        <div className={`glass absolute top-[calc(100%+6px)] z-40 min-w-[15rem] p-1.5 ${align === "right" ? "right-0" : "left-0"}`} role="menu" data-testid={panelTestId}>
+        <div className={`menu absolute top-[calc(100%+6px)] z-40 min-w-[18rem] p-1.5 ${align === "right" ? "right-0" : "left-0"}`} role="menu" data-testid={panelTestId}>
           {typeof children === "function" ? children(() => setOpen(false)) : children}
         </div>
       ) : null}
@@ -46,7 +46,7 @@ export function Popover({ button, children, align = "right", className = "", tes
 
 export function MenuRow({ children, onClick, active, disabled, testId, hint }: { children: ReactNode; onClick?: () => void; active?: boolean; disabled?: boolean; testId?: string; hint?: string }) {
   return (
-    <button role="menuitemcheckbox" aria-checked={!!active} disabled={disabled} onClick={onClick} data-testid={testId} title={hint} className={`flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition disabled:opacity-40 ${active ? "bg-accent/12 text-accent" : "hover:bg-black/5"}`}>
+    <button role="menuitemcheckbox" aria-checked={!!active} disabled={disabled} onClick={onClick} data-testid={testId} title={hint} className={`flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[13px] transition disabled:opacity-40 ${active ? "bg-accent/12 text-accent" : "hover:bg-black/5"}`}>
       <span className="flex items-center gap-2">{children}</span>
       {active ? <span aria-hidden>✓</span> : null}
     </button>
