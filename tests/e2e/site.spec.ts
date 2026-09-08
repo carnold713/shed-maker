@@ -43,6 +43,17 @@ test("site: runs off the stalls, fence takeoff, the barn on the map, site plan s
   await page.mouse.move(barn.x + barn.width / 2 + 60, barn.y + barn.height / 2 + 20, { steps: 5 });
   await page.mouse.up();
   await expect(page.getByTestId("site-coords")).not.toHaveValue("40.01500, -82.45000");
+  // Right-click anywhere on the map drops the barn there; "Put the barn here" then a click does too.
+  const mapBox = (await page.getByTestId("site-map").boundingBox())!;
+  const before = await page.getByTestId("site-coords").inputValue();
+  await page.mouse.click(mapBox.x + 120, mapBox.y + mapBox.height - 120, { button: "right" });
+  await expect(page.getByTestId("site-coords")).not.toHaveValue(before);
+  await page.getByTestId("map-place-barn").click();
+  await expect(page.getByTestId("site-map-placing")).toBeVisible();
+  const mid = await page.getByTestId("site-coords").inputValue();
+  await page.mouse.click(mapBox.x + mapBox.width - 150, mapBox.y + 150);
+  await expect(page.getByTestId("site-coords")).not.toHaveValue(mid);
+  await expect(page.getByTestId("site-map-placing")).toHaveCount(0);
   await page.screenshot({ path: "test-results/site.png" });
 
   // The plan (other steps) shows the runs outside the walls and fits them.

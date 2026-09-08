@@ -36,6 +36,10 @@ export function SiteMap() {
   const mapRef = useRef<L.Map | null>(null);
   const [tick, setTick] = useState(0);
   const [meta, setMeta] = useState<Meta | null>(null);
+  /** "Put the barn here" is armed: the next click on the map places the barn. */
+  const [placing, setPlacing] = useState(false);
+  const placingRef = useRef(false);
+  placingRef.current = placing;
   const frame = siteFrame(model);
   const located = !!frame;
 
@@ -110,19 +114,40 @@ export function SiteMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitNonce]);
 
-  // Click the map to put the barn there when it has no location yet.
+  // Put the barn where you click: always when it has no location yet, or when "Put the barn here" is armed.
+  // Right-click drops it there any time (Leaflet's contextmenu event; the browser menu is suppressed).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const onClick = (e: L.LeafletMouseEvent) => {
-      if (located) return;
+    const place = (e: L.LeafletMouseEvent) => {
       setSite({ lat: e.latlng.lat, lng: e.latlng.lng });
+      setPlacing(false);
+      lastLoc.current = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`; // keep the zoom the user chose
+    };
+    const onClick = (e: L.LeafletMouseEvent) => {
+      if (!located || placingRef.current) place(e);
+    };
+    const onContext = (e: L.LeafletMouseEvent) => {
+      L.DomEvent.preventDefault(e.originalEvent);
+      place(e);
     };
     map.on("click", onClick);
+    map.on("contextmenu", onContext);
     return () => {
       map.off("click", onClick);
+      map.off("contextmenu", onContext);
     };
   }, [located, setSite]);
+  useEffect(() => {
+    const el = mapEl.current;
+    if (el) el.style.cursor = placing || !located ? "crosshair" : "";
+    if (!placing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPlacing(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [placing, located]);
 
   // ---- Projection helpers
   const toPx = useCallback(
@@ -221,6 +246,12 @@ export function SiteMap() {
   }, [frame, fp, model, tick]);
 
   const px = shapes ? { c: toPx(shapes.center), n: toPx(shapes.north) } : null;
+  const barnOffscreen = (() => {
+    const map = mapRef.current;
+    if (!map || !frame) return false;
+    void tick;
+    return !map.getBounds().pad(-0.05).contains(L.latLng(frame.origin.lat, frame.origin.lng));
+  })();
   const ftPerPx = (() => {
     const map = mapRef.current;
     if (!map || !frame) return 0;
@@ -288,13 +319,39 @@ export function SiteMap() {
         <span>N</span>
         <span className="-mt-1 text-base leading-none">↑</span>
       </div>
+      {/* placement controls */}
+      <div className="absolute left-3 top-24 flex flex-col gap-1.5">
+        {located ? (
+          <button
+            className={`rounded-full px-3 py-1.5 text-[12px] font-medium shadow ${placing ? "bg-accent text-white" : "bg-white/95 text-foreground hover:bg-white"}`}
+            onClick={() => setPlacing((p) => !p)}
+            title="Then click the map where the barn should go (or just right-click the map any time)"
+            data-testid="map-place-barn"
+          >
+            {placing ? "Click the map where the barn goes…" : "Put the barn here"}
+          </button>
+        ) : null}
+        {located && barnOffscreen ? (
+          <button
+            className="rounded-full bg-white/95 px-3 py-1.5 text-[12px] font-medium text-foreground shadow hover:bg-white"
+            onClick={() => { const map = mapRef.current; if (map && frame) map.setView(frame.origin, Math.max(map.getZoom(), 18)); }}
+            data-testid="map-show-barn"
+          >
+            Show the barn
+          </button>
+        ) : null}
+      </div>
       {!located ? (
         <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1.5 text-[12px] text-foreground shadow" data-testid="site-map-prompt">
-          Search your address in the panel, or click the map where the barn goes.
+          Find your property, then click the map where the barn goes.
+        </div>
+      ) : placing ? (
+        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-accent px-3 py-1.5 text-[12px] text-white shadow" data-testid="site-map-placing">
+          Click where the middle of the barn should be. Esc to cancel.
         </div>
       ) : (
         <div className="pointer-events-none absolute left-1/2 bottom-3 -translate-x-1/2 rounded-full bg-white/90 px-3 py-1 text-[11px] text-foreground/80 shadow" onMouseEnter={() => setHint("Drag the barn to move it · drag the round handle to turn it · scroll to zoom")}>
-          {ftPerPx > 0 ? `${(ftPerPx * 100).toFixed(0)}' per 100 px · ${Math.round(model.site.orientationDeg)}° from north` : ""}
+          {ftPerPx > 0 ? `${(ftPerPx * 100).toFixed(0)}' per 100 px · ${Math.round(model.site.orientationDeg)}° from north · right-click to move the barn` : ""}
         </div>
       )}
     </div>

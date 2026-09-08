@@ -99,7 +99,7 @@ export function SiteStep() {
         </Section>
 
         <Section title="On your land">
-          <Field label="Find the property" hint="An address, a road and town, or coordinates. Then drag the barn where it goes on the map and turn it with the handle.">
+          <Field label="Find the property" hint="An address, a road and town, or coordinates. The barn lands there; then pan to the exact spot and right-click the map to move it.">
             <div className="flex gap-1">
               <input className={inputClass} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const ll = parseLatLng(q); if (ll) place(ll.lat, ll.lng); else void search(); } }} placeholder="123 County Rd, Town, OH" data-testid="site-search" />
               <Button className="px-2 py-1 text-xs" onClick={() => { const ll = parseLatLng(q); if (ll) place(ll.lat, ll.lng); else void search(); }} disabled={searching} data-testid="site-search-go">
@@ -138,7 +138,7 @@ export function SiteStep() {
             </div>
           </Field>
           <p className="text-[11px] leading-snug text-muted">
-            {located ? "The map shows the barn and its runs to scale. Drag the barn to move it; drag the round handle to turn it. Scroll to zoom." : "No location yet: click the map where the barn goes, or search above."}
+            {located ? "The map shows the barn and its runs to scale. To move the barn far, pan to the spot and right-click it (or press “Put the barn here” on the map and click). Drag the barn for small moves; drag the round handle to turn it. Scroll to zoom." : "No location yet: find your property, then click the map where the barn goes."}
           </p>
           <div className="flex flex-wrap gap-1">
             <Button className="px-2 py-1 text-xs" onClick={() => setTool("run")}>Add a run</Button>
