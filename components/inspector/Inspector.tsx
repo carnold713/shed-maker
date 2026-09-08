@@ -15,12 +15,13 @@ import { ZoneInspector } from "./ZoneInspector";
 import { LeanToInspector } from "./LeanToInspector";
 import { InteriorDoorInspector } from "./InteriorDoorInspector";
 import { FixtureInspector } from "./FixtureInspector";
+import { DrainInspector, OutletInspector } from "./DrainInspector";
 
 export { FtInput };
 
 /** Does this selection have its own dock panel? Building-level ids fall through to the step panel. */
 export function hasInspector(model: BuildingModel, id: string): boolean {
-  if (id === "footprint" || id === "roof" || id === "foundation" || id === "electrical" || id === "site") return false;
+  if (id === "footprint" || id === "roof" || id === "foundation" || id === "electrical" || id === "site" || id === "drainage") return false;
   void model;
   return true; // items get their panel; unknown ids reach MemberInspector, which clears them
 }
@@ -34,6 +35,8 @@ export function Inspector() {
   if (model.zones.some((z) => z.doors.some((d) => d.id === selection))) return <InteriorDoorInspector id={selection} />;
   if (model.leanTos.some((l) => l.id === selection)) return <LeanToInspector id={selection} />;
   if (model.electrical.fixtures.some((f) => f.id === selection)) return <FixtureInspector id={selection} />;
+  if (model.drainage.drains.some((d) => d.id === selection)) return <DrainInspector id={selection} />;
+  if (selection === "drain_outlet" && model.drainage.outlet) return <OutletInspector />;
   return <MemberInspector id={selection} />;
 }
 

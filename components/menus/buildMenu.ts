@@ -11,8 +11,10 @@ import { PEN_SPECIES, SPECIES_PRESETS } from "@/rules/animals/presets";
 import { ROOM_PRESETS, ZONE_TYPE_LABEL, defaultPenSize, zoneRect } from "@/lib/model/zones";
 import type { FixtureKind, InteriorDoorType, Species, ZoneType } from "@/lib/model/schema";
 import { INTERIOR_DOOR_PRESETS, INTERIOR_DOOR_TYPES, findInteriorDoor } from "@/lib/model/interiorDoors";
-import { FIXTURE_PRESETS, PLACEABLE_FIXTURE_KINDS } from "@/lib/model/electrical";
+import { FIXTURE_PRESETS, PLACEABLE_FIXTURE_KINDS, switchedLights } from "@/lib/model/electrical";
 import { PRESET_LABEL } from "@/lib/store/useViewStore";
+import { DRAIN_PRESETS, OUTLET_LABEL } from "@/lib/model/drainage";
+import type { DrainKind, DrainOutlet } from "@/lib/model/schema";
 
 /**
  * Context-menu definitions (SPEC §21.1), keyed by what was right-clicked.
@@ -53,7 +55,7 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
   const viewItems: MenuItem[] = [
     {
       label: "View",
-      children: (["exterior", "interior", "framing", "dollhouse"] as const).map((p) => ({ label: `${vs.preset === p ? "✓ " : "   "}${PRESET_LABEL[p]}`, onSelect: () => vs.setPreset(p) })),
+      children: (["exterior", "noRoof", "framing", "interior"] as const).map((p) => ({ label: `${vs.preset === p ? "✓ " : "   "}${PRESET_LABEL[p]}`, onSelect: () => vs.setPreset(p) })),
     },
     {
       label: "Layers",
@@ -61,7 +63,6 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
     },
     { label: vs.renderMode === "white" ? "Your colours" : "Plain white model", onSelect: () => vs.setRenderMode(vs.renderMode === "white" ? "realistic" : "white") },
     { label: `${vs.isometric ? "✓ " : "   "}No perspective`, onSelect: () => vs.setIsometric(!vs.isometric), shortcut: "I" },
-    { label: vs.cutHeightFt === null ? "Cutaway at 4'" : "Remove cutaway", onSelect: () => vs.setCutHeight(vs.cutHeightFt === null ? 4 : null), shortcut: "X" },
     { separator: true, label: "" },
     { label: "Zoom to fit", onSelect: () => vs.requestFit(), shortcut: "F" },
     ...(opts.screenshot ? [{ label: "Screenshot (PNG)", onSelect: opts.screenshot }] : []),
@@ -153,7 +154,7 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
           { label: `${model.roof.ridgeAxis === "ew" ? "✓ " : "   "}East–west`, onSelect: () => ps.setRoof({ ridgeAxis: "ew" }) },
         ] },
         { separator: true, label: "" },
-        { label: "See inside (cutaway)", onSelect: () => vs.setPreset("dollhouse") },
+        { label: "See inside (roof off)", onSelect: () => vs.setPreset("noRoof") },
         ...viewItems,
       ];
     case "footprint":
@@ -258,10 +259,35 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
         ...(f.kind !== "panel"
           ? [{ label: "Change to", children: PLACEABLE_FIXTURE_KINDS.filter((k: FixtureKind) => k !== f.kind && k !== "panel").map((k: FixtureKind) => ({ label: FIXTURE_PRESETS[k].label, onSelect: () => ps.updateFixture(f.id, { kind: k }) })) }]
           : []),
+        ...(f.kind === "light" ? [{ label: "Rotate 90°", onSelect: () => ps.rotateFixture(f.id), shortcut: "R" }] : []),
+        ...(f.kind === "switch"
+          ? [{ label: "Controls", children: model.electrical.fixtures.filter((l) => l.kind === "light" || l.kind === "floodlight").map((l) => { const on = switchedLights(model, f.id).some((x) => x.id === l.id); return { label: `${on ? "✓ " : "   "}${l.label ?? FIXTURE_PRESETS[l.kind].short}`, onSelect: () => ps.updateFixture(l.id, { switchId: on ? undefined : f.id }) }; }) }]
+          : []),
         { label: "Height", children: [4, 7, 8, 9, 10, 12].filter((h) => h <= model.eaveHeightFt).map((h) => ({ label: `${Math.abs(f.mountFt - h) < 1e-6 ? "✓ " : "   "}${h}' up`, onSelect: () => ps.updateFixture(f.id, { mountFt: h }) })) },
         { separator: true, label: "" },
         { label: "Properties", onSelect: () => ps.select(f.id) },
         { label: "Delete", onSelect: () => ps.removeFixture(f.id), danger: true, shortcut: "Del" },
+      ];
+    }
+    case "drain": {
+      const d = model.drainage.drains.find((x) => x.id === t.id);
+      if (!d) return [];
+      return [
+        { label: "Change to", children: (Object.keys(DRAIN_PRESETS) as DrainKind[]).filter((k) => k !== d.kind).map((k) => ({ label: DRAIN_PRESETS[k].label, onSelect: () => ps.updateDrain(d.id, { kind: k }) })) },
+        ...(d.kind === "trench" ? [{ label: "Channel length", children: [2, 4, 6, 8, 10, 12].map((L) => ({ label: `${Math.abs(d.lengthFt - L) < 1e-6 ? "✓ " : "   "}${L}'`, onSelect: () => ps.updateDrain(d.id, { lengthFt: L }) })) }, { label: d.axis === "x" ? "Turn north–south" : "Turn east–west", onSelect: () => ps.updateDrain(d.id, { axis: d.axis === "x" ? "y" : "x" }) }] : []),
+        { separator: true, label: "" },
+        { label: "Properties", onSelect: () => ps.select(d.id) },
+        { label: "Delete", onSelect: () => ps.removeDrain(d.id), danger: true, shortcut: "Del" },
+      ];
+    }
+    case "drainOutlet": {
+      const o = model.drainage.outlet;
+      if (!o) return [];
+      return [
+        { label: "Goes to", children: (Object.keys(OUTLET_LABEL) as DrainOutlet["kind"][]).map((k) => ({ label: `${o.kind === k ? "✓ " : "   "}${OUTLET_LABEL[k]}`, onSelect: () => ps.setOutlet({ kind: k }) })) },
+        { separator: true, label: "" },
+        { label: "Properties", onSelect: () => ps.select("drain_outlet") },
+        { label: "Remove outlet", onSelect: () => ps.removeOutlet(), danger: true, shortcut: "Del" },
       ];
     }
     case "empty": {
@@ -293,6 +319,13 @@ export function buildMenu(t: ContextTarget, opts: { screenshot?: () => void } = 
           ],
         },
         { label: "Shrink building to fit the stalls", onSelect: () => ps.fitEnvelopeToZones(), disabled: model.zones.length === 0 },
+        {
+          label: "Add a drain here",
+          children: [
+            { label: "Floor drain", onSelect: () => { const id = ps.addDrain({ kind: "floor", x: t.planX ?? 0, y: t.planY ?? 0 }); if (id) ps.select(id); } },
+            { label: "Trench drain", onSelect: () => { const id = ps.addDrain({ kind: "trench", x: t.planX ?? 0, y: t.planY ?? 0 }); if (id) ps.select(id); } },
+          ],
+        },
         { separator: true, label: "" },
         {
           label: "Add electrical here",

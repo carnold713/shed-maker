@@ -17,6 +17,9 @@ import { leanToPolygon } from "@/lib/model/leanTos";
 import { INTERIOR_DOOR_PRESETS, defaultInteriorDoorSize } from "@/lib/model/interiorDoors";
 import { FIXTURE_PRESETS } from "@/lib/model/electrical";
 import { deriveElectrical } from "@/lib/electrical/derive";
+import { deriveDrainage } from "@/lib/plumbing/drainage";
+import { DrainLayer } from "./DrainLayer";
+import { DRAIN_PRESETS, OUTLET_ID } from "@/lib/model/drainage";
 
 /**
  * Top-down plan in SVG (SPEC §3.4, §21). Plan +y is north and renders UP the
@@ -59,6 +62,14 @@ export function PlanView() {
   const [doorGhost, setDoorGhost] = useState<{ partition: Partition; u: number; w: number; zoneId: string; side: "n" | "s" | "e" | "w"; offsetFt: number } | null>(null);
   const [fixtureGhost, setFixtureGhost] = useState<{ x: number; y: number; onWall: boolean } | null>(null);
   const electrical = useMemo(() => (model ? deriveElectrical(model) : null), [model]);
+  const toolDrainKind = useViewStore((s) => s.toolDrainKind);
+  const addDrain = useProjectStore((s) => s.addDrain);
+  const removeDrain = useProjectStore((s) => s.removeDrain);
+  const moveDrain = useProjectStore((s) => s.moveDrain);
+  const setOutlet = useProjectStore((s) => s.setOutlet);
+  const removeOutlet = useProjectStore((s) => s.removeOutlet);
+  const drainage = useMemo(() => (model && model.drainage.drains.length ? deriveDrainage(model) : null), [model]);
+  const [drainGhost, setDrainGhost] = useState<{ x: number; y: number; onWall: boolean } | null>(null);
   const showElectrical = step === "electrical" || (model?.electrical.fixtures.length ?? 0) > 0;
   const moveZoneAction = useProjectStore((s) => s.moveZone);
   const resizeZoneAction = useProjectStore((s) => s.resizeZone);
@@ -152,6 +163,8 @@ export function PlanView() {
     };
   }, []);
   const justPanned = useRef(false);
+  /** A placement tool just added something on bare floor: the click that follows must not deselect it. */
+  const justPlaced = useRef(false);
   const px = useCallback((x: number) => ox + x * scale, [ox, scale]);
   const py = useCallback((y: number) => oy - y * scale, [oy, scale]);
   const toPlan = useCallback(
@@ -170,7 +183,9 @@ export function PlanView() {
     | { kind: "draw"; x0: number; y0: number; moved: boolean }
     | { kind: "doorMove"; id: string; vertical: boolean; origin: number; grabFt: number }
     | { kind: "fixtureMove"; id: string; grabX: number; grabY: number }
-    | { kind: "pan"; startX: number; startY: number; panX: number; panY: number; moved: boolean };
+    | { kind: "pan"; startX: number; startY: number; panX: number; panY: number; moved: boolean }
+    | { kind: "drainMove"; id: string; grabX: number; grabY: number }
+    | { kind: "outletMove" };
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const endDrag = useRef<(() => void) | null>(null);
@@ -220,7 +235,21 @@ export function PlanView() {
       }
       if (!d) {
         if (tool === "interiorDoor") {
-          setDoorGhost(doorGhostAt(model, partitions, p.x, p.y, toolInteriorDoorType));
+          const g = doorGhostAt(model, partitions, p.x, p.y, toolInteriorDoorType);
+          setDoorGhost(g);
+          const wallHit = !g ? nearestWall(model, p.x, p.y) : null;
+          setHint(g ? `Click to add a ${INTERIOR_DOOR_PRESETS[toolInteriorDoorType].label.toLowerCase()} to ${model.zones.find((z) => z.id === g.zoneId)?.name ?? "this stall"} here` : wallHit && wallHit.dist <= 2 ? "That side is an outside wall — use “Door to the outside” on the stall, or add a door in the Outside step" : null);
+          return;
+        }
+        if (tool === "drain") {
+          if (toolDrainKind === "outlet") {
+            const hit = nearestWall(model, p.x, p.y);
+            if (hit) {
+              const f = wallFrame(hit.wall);
+              const u = Math.round(hit.u * 2) / 2;
+              setDrainGhost({ x: hit.wall.start.x + f.dir.x * u, y: hit.wall.start.y + f.dir.y * u, onWall: true });
+            }
+          } else setDrainGhost({ x: Math.round(p.x * 2) / 2, y: Math.round(p.y * 2) / 2, onWall: false });
           return;
         }
         if (tool === "fixture") {
@@ -276,6 +305,14 @@ export function PlanView() {
         moveFixture(d.id, p.x - d.grabX, p.y - d.grabY);
         return;
       }
+      if (d.kind === "drainMove") {
+        moveDrain(d.id, p.x - d.grabX, p.y - d.grabY);
+        return;
+      }
+      if (d.kind === "outletMove") {
+        setOutlet({ x: p.x, y: p.y });
+        return;
+      }
       if (d.kind === "edge") {
         if (d.edge === "e") setFootprintRect(Math.round(p.x), D);
         else setFootprintRect(W, Math.round(p.y));
@@ -289,7 +326,7 @@ export function PlanView() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [model, toPlan, setFootprintRect, moveOpening, D, W, tool, toolSpecies, toolRoomType, autoGrow, moveZoneAction, resizeZoneAction, doorKey, windowKey, partitions, toolInteriorDoorType, toolFixtureKind, moveInteriorDoor, moveFixture],
+    [model, toPlan, setFootprintRect, moveOpening, D, W, tool, toolSpecies, toolRoomType, autoGrow, moveZoneAction, resizeZoneAction, doorKey, windowKey, partitions, toolInteriorDoorType, toolFixtureKind, moveInteriorDoor, moveFixture, toolDrainKind, moveDrain, setOutlet],
   );
 
   /** Place the active door/window palette entry on the wall under the cursor; one placement returns to Select (UX audit §3.7). */
@@ -311,7 +348,22 @@ export function PlanView() {
       select(id);
       setTool("select");
       setFixtureGhost(null);
+      justPlaced.current = true;
     }
+  }
+
+  /** Put a drain (or the outlet) where the ghost is. */
+  function placeDrain(x: number, y: number) {
+    if (toolDrainKind === "outlet") {
+      setOutlet({ x, y });
+      select(OUTLET_ID);
+    } else {
+      const id = addDrain({ kind: toolDrainKind, x, y });
+      if (id) select(id);
+    }
+    setTool("select");
+    setDrainGhost(null);
+    justPlaced.current = true;
   }
 
   /** Add the ghosted interior door. */
@@ -322,6 +374,7 @@ export function PlanView() {
       select(id);
       setTool("select");
       setDoorGhost(null);
+      justPlaced.current = true;
     }
   }
 
@@ -397,8 +450,14 @@ export function PlanView() {
             else placeFixture(p.x, p.y);
             return;
           }
-          if (tool === "interiorDoor" && doorGhost) {
-            placeInteriorDoor();
+          if (tool === "interiorDoor") {
+            if (doorGhost) placeInteriorDoor();
+            return;
+          }
+          if (tool === "drain") {
+            const p = toPlan(e, e.currentTarget);
+            if (drainGhost) placeDrain(drainGhost.x, drainGhost.y);
+            else if (toolDrainKind !== "outlet") placeDrain(p.x, p.y);
             return;
           }
           if ((tool === "pen" || tool === "room" || tool === "aisle") && onEmpty) {
@@ -408,8 +467,9 @@ export function PlanView() {
           }
         }}
         onClick={(e) => {
-          if (justPanned.current) {
+          if (justPanned.current || justPlaced.current) {
             justPanned.current = false;
+            justPlaced.current = false;
             return;
           }
           if (tool !== "select") return; // a stamp just selected its new zone
@@ -456,12 +516,13 @@ export function PlanView() {
           problems={problems}
           onPointerDownZone={(z, e) => {
             if (e.button !== 0) return;
+            // Placement tools (door, fixture, stamps) must reach the plan's own handler: don't swallow the click here.
+            if (tool !== "select" && tool !== "erase") return;
             e.stopPropagation();
             if (tool === "erase") {
               removeZone(z.id);
               return;
             }
-            if (tool !== "select") return;
             (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
             select(z.id);
             const p = toPlan(e, (e.currentTarget as SVGElement).ownerSVGElement!);
@@ -487,6 +548,7 @@ export function PlanView() {
           onDoubleClick={(z) => select(z.id)}
           onPointerDownDoor={(p, d, e) => {
             if (e.button !== 0) return;
+            if (tool !== "select" && tool !== "erase") return; // let the door / fixture tools place beside an existing door
             e.stopPropagation();
             if (tool === "erase") {
               if (d.auto) setAutoDoor(d.zoneId, false);
@@ -628,6 +690,7 @@ export function PlanView() {
                     return placeFixture(w.start.x + f.dir.x * snapped, w.start.y + f.dir.y * snapped, w.id);
                   }
                   if (tool === "interiorDoor") return; // outside doors live in the Outside step
+                  if (tool === "drain" && toolDrainKind === "outlet") return placeDrain(w.start.x + f.dir.x * u, w.start.y + f.dir.y * u);
                   if (tool === "leanTo") {
                     const id = addLeanTo({ side: w.side! });
                     if (id) {
@@ -703,6 +766,63 @@ export function PlanView() {
 
         {/* fixture ghost */}
         {fixtureGhost && tool === "fixture" ? <circle cx={px(fixtureGhost.x)} cy={py(fixtureGhost.y)} r={Math.max(6, scale * 0.6)} fill="#b5532a" fillOpacity={0.35} stroke="#b5532a" strokeDasharray="3 2" pointerEvents="none" /> : null}
+
+        {/* drain ghost */}
+        {drainGhost && tool === "drain" ? <circle cx={px(drainGhost.x)} cy={py(drainGhost.y)} r={Math.max(6, scale * 0.5)} fill="#3d7ea6" fillOpacity={0.3} stroke="#3d7ea6" strokeDasharray="3 2" pointerEvents="none" /> : null}
+
+        {/* drainage */}
+        {drainage ? (
+          <DrainLayer
+            derived={drainage}
+            px={px}
+            py={py}
+            scale={scale}
+            selection={selection}
+            hovered={hovered}
+            emphasis={step === "building" || model.drainage.drains.some((d) => d.id === selection) || selection === OUTLET_ID}
+            onPointerDown={(d, e) => {
+              if (e.button !== 0) return;
+              if (tool !== "select" && tool !== "erase") return;
+              e.stopPropagation();
+              if (tool === "erase") {
+                removeDrain(d.id);
+                return;
+              }
+              (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+              select(d.id);
+              const pt = toPlan(e, (e.currentTarget as SVGElement).ownerSVGElement!);
+              beginDrag({ kind: "drainMove", id: d.id, grabX: pt.x - d.x, grabY: pt.y - d.y });
+            }}
+            onContextMenu={(d, e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              select(d.id);
+              openContextMenu({ kind: "drain", id: d.id, x: e.clientX, y: e.clientY, from: "plan" });
+            }}
+            onHover={(d) => {
+              setHovered(d ? d.id : null);
+              hover(d ? `${d.label ?? DRAIN_PRESETS[d.kind].short} · drag to move · right-click for more` : null);
+            }}
+            onPointerDownOutlet={(e) => {
+              if (e.button !== 0) return;
+              if (tool !== "select" && tool !== "erase") return;
+              e.stopPropagation();
+              if (tool === "erase") {
+                removeOutlet();
+                return;
+              }
+              (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+              select(OUTLET_ID);
+              beginDrag({ kind: "outletMove" });
+            }}
+            onContextMenuOutlet={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              select(OUTLET_ID);
+              openContextMenu({ kind: "drainOutlet", id: OUTLET_ID, x: e.clientX, y: e.clientY, from: "plan" });
+            }}
+          />
+        ) : null}
 
         {/* electrical */}
         {showElectrical && electrical ? (

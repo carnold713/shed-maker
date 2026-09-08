@@ -8,6 +8,12 @@ import { DockHeader, DockBody, NextStep } from "@/components/editor/Dock";
 import { Field, inputClass, Section, Toggle } from "@/components/ui/Field";
 import { FtInput } from "@/components/ui/FtInput";
 import { Button } from "@/components/ui/Button";
+import { useMemo } from "react";
+import { useViewStore } from "@/lib/store/useViewStore";
+import { deriveDrainage } from "@/lib/plumbing/drainage";
+import { OUTLET_LABEL, OUTLET_ID } from "@/lib/model/drainage";
+import type { DrainOutlet } from "@/lib/model/schema";
+import { ToolRow, ToolButton, ItemList, EmptyState } from "./ToolRow";
 
 /** Building step (UX audit §2.4): size, height, roof, frame, concrete. Trade detail lives under "Advanced framing". */
 export function BuildingStep() {
@@ -19,7 +25,17 @@ export function BuildingStep() {
   const setRoof = useProjectStore((s) => s.setRoof);
   const setSlab = useProjectStore((s) => s.setSlab);
   const snap = useProjectStore((s) => s.snapFootprintToModule);
-  const { framing, geometry } = useDerived();
+  const setOutlet = useProjectStore((s) => s.setOutlet);
+  const setDrainageOptions = useProjectStore((s) => s.setDrainageOptions);
+  const autoDrainWashBays = useProjectStore((s) => s.autoDrainWashBays);
+  const autoOutlet = useProjectStore((s) => s.autoOutlet);
+  const select = useProjectStore((s) => s.select);
+  const tool = useViewStore((s) => s.tool);
+  const drainKind = useViewStore((s) => s.toolDrainKind);
+  const setDrainKind = useViewStore((s) => s.setToolDrainKind);
+  const drainage = useMemo(() => deriveDrainage(model), [model]);
+  const { framing, geometry, report } = useDerived();
+  const problems = new Set((report?.findings ?? []).filter((f) => f.severity !== "info").flatMap((f) => f.entityIds));
   if (model.footprint.kind !== "rect") return null;
   const { wFt, dFt } = model.footprint;
   const ns = model.roof.ridgeAxis === "ns";
@@ -253,6 +269,81 @@ export function BuildingStep() {
               <Toggle checked={slab.aprons} onChange={(v) => setSlab({ aprons: v })} label={`Aprons outside big doors (${slab.apronDepthFt}' deep)`} hint="A pad outside each sliding, overhead and roll-up door." testId="slab-aprons" />
             </>
           ) : null}
+        </Section>
+
+        <Section
+          title="Drains"
+          aside={
+            <Button variant="ghost" className="px-2 py-0.5 text-[11.5px]" onClick={autoDrainWashBays} disabled={!model.zones.some((z) => z.type === "wash")} title={model.zones.some((z) => z.type === "wash") ? "A trench drain across each wash bay and an outlet on the nearest wall" : "Add a wash bay in Layout first"} data-testid="auto-drain">
+              Drain the wash bays
+            </Button>
+          }
+        >
+          <ToolRow>
+            <ToolButton tool="select" icon="select" label="Select" keyHint="V" hint="Click to select · drag to move" testId="tool-select" />
+            <button onClick={() => setDrainKind("floor")} aria-pressed={tool === "drain" && drainKind === "floor"} title="Click where the floor drain goes (D)" data-testid="tool-drain-floor" className={`flex min-w-[3.6rem] flex-col items-center gap-0.5 rounded-xl border px-2 py-1.5 text-[11px] font-medium transition ${tool === "drain" && drainKind === "floor" ? "border-accent bg-accent text-white" : "border-border/80 bg-background/60 text-foreground/80 hover:bg-background"}`}>
+              <span className="text-[16px] leading-[18px]">◎</span>Floor drain
+            </button>
+            <button onClick={() => setDrainKind("trench")} aria-pressed={tool === "drain" && drainKind === "trench"} title="Click where the trench drain goes; it spans the bay it lands in" data-testid="tool-drain-trench" className={`flex min-w-[3.6rem] flex-col items-center gap-0.5 rounded-xl border px-2 py-1.5 text-[11px] font-medium transition ${tool === "drain" && drainKind === "trench" ? "border-accent bg-accent text-white" : "border-border/80 bg-background/60 text-foreground/80 hover:bg-background"}`}>
+              <span className="text-[16px] leading-[18px]">▤</span>Trench drain
+            </button>
+            <button onClick={() => setDrainKind("outlet")} aria-pressed={tool === "drain" && drainKind === "outlet"} title="Click an outside wall where the pipe should leave" data-testid="tool-drain-outlet" className={`flex min-w-[3.6rem] flex-col items-center gap-0.5 rounded-xl border px-2 py-1.5 text-[11px] font-medium transition ${tool === "drain" && drainKind === "outlet" ? "border-accent bg-accent text-white" : "border-border/80 bg-background/60 text-foreground/80 hover:bg-background"}`}>
+              <span className="text-[16px] leading-[18px]">⇢</span>Outlet
+            </button>
+            <ToolButton tool="erase" icon="erase" label="Remove" keyHint="E" hint="Click a drain or the outlet to remove it" testId="tool-erase" />
+          </ToolRow>
+          {model.drainage.drains.length === 0 ? (
+            <EmptyState title="No drains yet.">Wash bays and aisles need a drain and the slab sloped to it. Pick Floor drain or Trench drain and click the plan, or press &ldquo;Drain the wash bays&rdquo;.</EmptyState>
+          ) : (
+            <>
+              <ItemList items={[...drainage.drains.map((dd) => ({ id: dd.drain.id, label: dd.drain.label ?? (dd.drain.kind === "trench" ? "Trench drain" : "Floor drain"), detail: dd.runFt ? `${dd.runFt}' run` : "no outlet", icon: "waterer", warn: problems.has(dd.drain.id) })), ...(model.drainage.outlet ? [{ id: OUTLET_ID, label: "Outlet", detail: drainage.outlet ? `${drainage.outlet.invertIn}" down` : "", icon: "aisle", warn: problems.has(OUTLET_ID) }] : [])]} />
+              {!model.drainage.outlet ? (
+                <Button className="self-start px-2 py-1 text-xs" onClick={autoOutlet} data-testid="auto-outlet">
+                  Place the outlet for me
+                </Button>
+              ) : null}
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Pipe">
+                  <select className={inputClass} value={model.drainage.pipeDiaIn} onChange={(e) => setDrainageOptions({ pipeDiaIn: Number(e.target.value) as 3 | 4 | 6 })}>
+                    <option value={3}>3&quot; PVC</option>
+                    <option value={4}>4&quot; PVC</option>
+                    <option value={6}>6&quot; PVC</option>
+                  </select>
+                </Field>
+                <Field label="Pipe fall">
+                  <select className={inputClass} value={model.drainage.slopeInPerFt} onChange={(e) => setDrainageOptions({ slopeInPerFt: Number(e.target.value) })}>
+                    <option value={0.125}>⅛&quot; per foot (minimum)</option>
+                    <option value={0.25}>¼&quot; per foot</option>
+                  </select>
+                </Field>
+                {model.drainage.outlet ? (
+                  <>
+                    <Field label="Water goes">
+                      <select className={inputClass} value={model.drainage.outlet.kind} onChange={(e) => setOutlet({ kind: e.target.value as DrainOutlet["kind"] })} data-testid="outlet-kind-step">
+                        {(Object.keys(OUTLET_LABEL) as DrainOutlet["kind"][]).map((k) => (
+                          <option key={k} value={k}>
+                            {OUTLET_LABEL[k].split(" (")[0]}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Ground drops to the outlet by" hint="inches lower than at the building">
+                      <input type="number" min={0} max={240} className={`${inputClass} font-mono`} value={model.drainage.siteFallIn} onChange={(e) => setDrainageOptions({ siteFallIn: Math.max(0, Number(e.target.value) || 0) })} />
+                    </Field>
+                  </>
+                ) : null}
+              </div>
+              {drainage.outlet ? (
+                <p className={`text-[11.5px] leading-snug ${drainage.outlet.kind === "daylight" && !drainage.outlet.daylightOk ? "text-amber-700" : "text-muted"}`} data-testid="drain-summary">
+                  {drainage.pipe.totalFt}&apos; of {drainage.pipe.diaIn}&quot; pipe, {drainage.cleanouts.length} cleanout{drainage.cleanouts.length === 1 ? "" : "s"}; the pipe leaves {drainage.outlet.invertIn}&quot; below the floor
+                  {drainage.outlet.kind === "daylight" ? (drainage.outlet.daylightOk ? " and clears the ground." : ` — the ground needs ${drainage.outlet.fallNeededIn}" more fall to daylight it.`) : "."}{" "}
+                  <button className="text-accent underline" onClick={() => select(OUTLET_ID)}>
+                    Outlet details
+                  </button>
+                </p>
+              ) : null}
+            </>
+          )}
         </Section>
       </DockBody>
       <NextStep to="outside" />

@@ -11,8 +11,10 @@ import { needsApron } from "@/lib/model/openings";
 import { formatFtIn } from "@/lib/units";
 import { FixtureLayer } from "@/components/plan/FixtureLayer";
 import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
+import { DrainLayer } from "@/components/plan/DrainLayer";
+import type { DrainageDerived } from "@/lib/plumbing/drainage";
 
-export type PlanMode = "floor" | "foundation" | "roof" | "electrical";
+export type PlanMode = "floor" | "foundation" | "roof" | "electrical" | "drainage";
 
 /** Grid bubbles from the post lines: numbers along the ridge, letters across. */
 export function gridLines(model: BuildingModel, framing: FramingSet): { xs: { x: number; label: string }[]; ys: { y: number; label: string }[] } {
@@ -41,7 +43,7 @@ export function openingTags(model: BuildingModel): Map<string, string> {
  * drawn: the floor plan, the foundation/post plan, the roof framing, or the
  * electrical layout — all from the same model and derived data.
  */
-export function PlanSheet({ model, framing, partitions, electrical, mode, widthPx, heightPx }: { model: BuildingModel; framing: FramingSet; partitions: Partition[]; electrical: ElectricalDerived | null; mode: PlanMode; widthPx: number; heightPx: number }) {
+export function PlanSheet({ model, framing, partitions, electrical, drainage, mode, widthPx, heightPx }: { model: BuildingModel; framing: FramingSet; partitions: Partition[]; electrical: ElectricalDerived | null; drainage?: DrainageDerived | null; mode: PlanMode; widthPx: number; heightPx: number }) {
   if (model.footprint.kind !== "rect") return null;
   const { wFt: W, dFt: D } = model.footprint;
   // Include lean-tos in the extents.
@@ -97,7 +99,7 @@ export function PlanSheet({ model, framing, partitions, electrical, mode, widthP
       </g>
 
       {/* slab / aprons on the foundation and floor plans */}
-      {(mode === "foundation" || mode === "floor") && model.foundation.slab.enabled ? (
+      {(mode === "foundation" || mode === "floor" || mode === "drainage") && model.foundation.slab.enabled ? (
         <g>
           <rect x={px(0)} y={py(D)} width={W * scale} height={D * scale} fill={mode === "foundation" ? "#eeebe4" : "#f7f5f0"} stroke="#9a9790" strokeWidth={0.6} />
           {model.foundation.slab.aprons
@@ -130,13 +132,13 @@ export function PlanSheet({ model, framing, partitions, electrical, mode, widthP
       ))}
 
       {/* zones + partitions + interior doors on the floor plan */}
-      {mode === "floor" || mode === "electrical"
+      {mode === "floor" || mode === "electrical" || mode === "drainage"
         ? model.zones.map((z) => {
             const r = zoneRect(z);
             return (
               <g key={z.id}>
                 <rect x={px(r.x)} y={py(r.y + r.d)} width={r.w * scale} height={r.d * scale} fill={mode === "floor" ? (z.type === "aisle" ? "#faf8f3" : "#f1ede4") : "none"} stroke="#7a756c" strokeWidth={0.5} strokeDasharray={z.type === "aisle" ? "4 3" : undefined} />
-                {mode === "floor" && r.w * scale > 40 ? (
+                {(mode === "floor" || mode === "drainage") && r.w * scale > 40 ? (
                   <>
                     <text x={px(r.x + r.w / 2)} y={py(r.y + r.d / 2) - 2} textAnchor="middle" fontSize={fs} fontWeight={600} fill="#1c1b19">
                       {z.name}
@@ -249,6 +251,23 @@ export function PlanSheet({ model, framing, partitions, electrical, mode, widthP
             return <g>{lines}</g>;
           })()
         : null}
+
+      {/* drainage */}
+      {mode === "drainage" && drainage ? (
+        <>
+          <DrainLayer derived={drainage} px={px} py={py} scale={scale} selection={null} hovered={null} emphasis onPointerDown={() => {}} onContextMenu={() => {}} onHover={() => {}} onPointerDownOutlet={() => {}} onContextMenuOutlet={() => {}} />
+          {drainage.drains.map((dd, i) => (
+            <text key={dd.drain.id} x={px(dd.drain.x)} y={py(dd.drain.y) - 12} textAnchor="middle" fontSize={fs - 1} fontWeight={600} fill="#1c1b19">
+              FD{i + 1} · inv −{dd.invertIn}&quot;
+            </text>
+          ))}
+          {drainage.drains.map((dd) => (
+            <text key={`hp${dd.drain.id}`} x={px(dd.catchment.x + dd.catchment.w) - 4} y={py(dd.catchment.y + dd.catchment.d) + fs + 2} textAnchor="end" fontSize={fs - 2} fill="#3d7ea6">
+              high +{dd.highPointIn}&quot; · {dd.slabSlopeInPerFt * 8}/8&quot;/ft
+            </text>
+          ))}
+        </>
+      ) : null}
 
       {/* electrical */}
       {mode === "electrical" && electrical ? (

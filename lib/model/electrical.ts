@@ -7,6 +7,7 @@ import { nearestExteriorWall } from "./walls";
 import { zoneRect } from "./zones";
 import { lumensNeeded, lumensOf } from "@/lib/electrical/lighting";
 import { newId } from "./ids";
+import { derivePartitions } from "@/lib/interior/partitions";
 
 export interface FixturePreset {
   kind: FixtureKind;
@@ -39,7 +40,6 @@ export const FIXTURE_KINDS = Object.keys(FIXTURE_PRESETS) as FixtureKind[];
 export const PLACEABLE_FIXTURE_KINDS: FixtureKind[] = ["light", "outlet", "switch", "fan", "waterer", "heater", "floodlight", "panel"];
 
 const GRID_FT = 0.5;
-const WALL_SNAP_FT = 3;
 
 function touch(model: BuildingModel): BuildingModel {
   return { ...model, meta: { ...model.meta, updatedAt: new Date().toISOString() } };
@@ -56,19 +56,38 @@ export function defaultMountFt(model: BuildingModel, kind: FixtureKind): number 
   return Math.min(p.mountFt, model.eaveHeightFt - 0.5);
 }
 
-/** Resolve a plan point for a fixture: wall devices snap onto the nearest exterior wall when close. */
-function resolvePosition(model: BuildingModel, kind: FixtureKind, x: number, y: number, wallId?: string): { x: number; y: number; wallId?: string } {
+/** Nearest exterior wall or interior partition to a plan point — wall devices always lock onto one. */
+export function nearestMountingWall(model: BuildingModel, x: number, y: number, wallId?: string): { x: number; y: number; wallId?: string; facing: "x" | "y"; dist: number } | null {
+  let best: { x: number; y: number; wallId?: string; facing: "x" | "y"; dist: number } | null = null;
+  const ext = wallId ? (() => { const w = model.walls.find((ww) => ww.id === wallId); return w ? nearestExteriorWall({ ...model, walls: [w] }, x, y) : null; })() : nearestExteriorWall(model, x, y);
+  if (ext) {
+    const w = ext.wall;
+    const len = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
+    const u = Math.max(0.5, Math.min(len - 0.5, snap(ext.u)));
+    const dx = (w.end.x - w.start.x) / len;
+    const dy = (w.end.y - w.start.y) / len;
+    best = { x: w.start.x + dx * u, y: w.start.y + dy * u, wallId: w.id, facing: Math.abs(dx) > Math.abs(dy) ? "x" : "y", dist: ext.dist };
+  }
+  if (!wallId) {
+    for (const p of derivePartitions(model)) {
+      const vertical = Math.abs(p.x1 - p.x0) < 1e-9;
+      const u = vertical ? Math.max(0.5, Math.min(p.lengthFt - 0.5, snap(y - p.y0))) : Math.max(0.5, Math.min(p.lengthFt - 0.5, snap(x - p.x0)));
+      if (p.lengthFt < 1) continue;
+      const px = vertical ? p.x0 : p.x0 + u;
+      const py = vertical ? p.y0 + u : p.y0;
+      const dist = Math.hypot(x - px, y - py);
+      if (!best || dist < best.dist) best = { x: px, y: py, facing: vertical ? "y" : "x", dist };
+    }
+  }
+  return best;
+}
+
+/** Resolve a plan point for a fixture: wall devices lock onto the nearest wall or partition; the rest snap to a 6" grid. */
+function resolvePosition(model: BuildingModel, kind: FixtureKind, x: number, y: number, wallId?: string): { x: number; y: number; wallId?: string; facing?: "x" | "y" } {
   const p = FIXTURE_PRESETS[kind];
   if (p.wall) {
-    const hit = wallId ? (() => { const w = model.walls.find((ww) => ww.id === wallId); return w ? nearestExteriorWall({ ...model, walls: [w] }, x, y) : null; })() : nearestExteriorWall(model, x, y);
-    if (hit && (wallId || hit.dist <= WALL_SNAP_FT)) {
-      const w = hit.wall;
-      const len = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
-      const u = Math.max(0.5, Math.min(len - 0.5, snap(hit.u)));
-      const dx = (w.end.x - w.start.x) / len;
-      const dy = (w.end.y - w.start.y) / len;
-      return { x: w.start.x + dx * u, y: w.start.y + dy * u, wallId: w.id };
-    }
+    const hit = nearestMountingWall(model, x, y, wallId);
+    if (hit) return { x: hit.x, y: hit.y, wallId: hit.wallId, facing: hit.facing };
   }
   const fp = model.footprint.kind === "rect" ? model.footprint : { wFt: 0, dFt: 0 };
   return { x: Math.max(0, Math.min(fp.wFt, snap(x))), y: Math.max(0, Math.min(fp.dFt, snap(y))) };
@@ -83,6 +102,7 @@ export interface AddFixtureInput {
   mountFt?: number;
   label?: string;
   id?: string;
+  rotationDeg?: number;
 }
 
 export function addFixture(model: BuildingModel, input: AddFixtureInput): BuildingModel {
@@ -96,10 +116,12 @@ export function addFixture(model: BuildingModel, input: AddFixtureInput): Buildi
     x: pos.x,
     y: pos.y,
     wallId: pos.wallId,
+    facing: pos.facing,
     mountFt: input.mountFt ?? defaultMountFt(model, input.kind),
     watts: input.watts ?? p.watts,
     volts: p.volts,
     label: input.label,
+    rotationDeg: input.rotationDeg ?? 0,
   };
   return touch({ ...model, electrical: { ...model.electrical, fixtures: [...model.electrical.fixtures, fixture] } });
 }
@@ -127,8 +149,8 @@ export function moveFixture(model: BuildingModel, id: string, x: number, y: numb
   const cur = model.electrical.fixtures.find((f) => f.id === id);
   if (!cur) return model;
   const pos = resolvePosition(model, cur.kind, x, y);
-  if (Math.abs(pos.x - cur.x) < 1e-9 && Math.abs(pos.y - cur.y) < 1e-9 && pos.wallId === cur.wallId) return model;
-  return updateFixture(model, id, { x: pos.x, y: pos.y, wallId: pos.wallId });
+  if (Math.abs(pos.x - cur.x) < 1e-9 && Math.abs(pos.y - cur.y) < 1e-9 && pos.wallId === cur.wallId && pos.facing === cur.facing) return model;
+  return updateFixture(model, id, { x: pos.x, y: pos.y, wallId: pos.wallId, facing: pos.facing });
 }
 
 export function removeFixture(model: BuildingModel, id: string): BuildingModel {
@@ -221,7 +243,7 @@ export function autoLightZone(model: BuildingModel, zoneId: string): BuildingMod
     const t = (i + 0.5) / total;
     const x = along === "x" ? r.x + r.w * t : r.x + r.w / 2;
     const y = along === "y" ? r.y + r.d * t : r.y + r.d / 2;
-    next = addFixture(next, { kind: "light", x, y, label: total > 1 ? `${z.name} ${i + 1}` : z.name });
+    next = addFixture(next, { kind: "light", x, y, label: total > 1 ? `${z.name} ${i + 1}` : z.name, rotationDeg: along === "x" ? 0 : 90 });
   }
   return next;
 }
@@ -232,4 +254,30 @@ export function autoLightAll(model: BuildingModel): BuildingModel {
   for (const z of model.zones) next = autoLightZone(next, z.id);
   if (!next.electrical.fixtures.some((f) => f.kind === "panel")) next = autoPlacePanel(next);
   return next;
+}
+
+/** Turn a light strip 90°. */
+export function rotateFixture(model: BuildingModel, id: string): BuildingModel {
+  const f = model.electrical.fixtures.find((x) => x.id === id);
+  if (!f || f.kind !== "light") return model;
+  return updateFixture(model, id, { rotationDeg: (f.rotationDeg + 90) % 180 });
+}
+
+/** Which lights a switch controls: the ones assigned to it, plus unassigned lights it is the nearest switch to. */
+export function switchedLights(model: BuildingModel, switchId: string): ElectricalFixture[] {
+  const switches = model.electrical.fixtures.filter((f) => f.kind === "switch");
+  return model.electrical.fixtures.filter((f) => {
+    if (f.kind !== "light" && f.kind !== "floodlight") return false;
+    if (f.switchId) return f.switchId === switchId;
+    let best: ElectricalFixture | null = null;
+    let bd = Infinity;
+    for (const s of switches) {
+      const d = Math.hypot(s.x - f.x, s.y - f.y);
+      if (d < bd) {
+        bd = d;
+        best = s;
+      }
+    }
+    return best?.id === switchId;
+  });
 }

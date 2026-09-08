@@ -14,7 +14,7 @@
 import type { BuildingModel, ElectricalFixture, FixtureKind, Zone } from "@/lib/model/schema";
 import { zoneRect } from "@/lib/model/zones";
 import { lumensNeeded, lumensOf, TARGET_FC } from "./lighting";
-import { FIXTURE_PRESETS, fixturesInZone } from "@/lib/model/electrical";
+import { FIXTURE_PRESETS, fixturesInZone, switchedLights } from "@/lib/model/electrical";
 
 export type CircuitKind = "lighting" | "receptacle" | "fan" | "waterer" | "dedicated";
 
@@ -84,8 +84,15 @@ export interface PanelLoad {
   feederDropPct: number;
 }
 
+export interface SwitchLeg {
+  switchId: string;
+  lightIds: string[];
+}
+
 export interface ElectricalDerived {
   fixtures: ElectricalFixture[];
+  /** Which lights each switch controls (assigned, else nearest switch). */
+  switchLegs: SwitchLeg[];
   panel: { x: number; y: number; wallId?: string; placed: boolean };
   circuits: Circuit[];
   routes: RouteSegment[];
@@ -422,8 +429,11 @@ export function deriveElectrical(model: BuildingModel): ElectricalDerived {
   const wireByAwg = [...wireMap.entries()].map(([awg, ft]) => ({ awg, ft })).sort((a, b) => b.awg - a.awg);
   const conduitFt = model.electrical.wiring === "pvcConduit" ? Math.ceil(routes.reduce((s, r) => s + r.lengthFt, 0) * 1.1) : 0;
 
+  const switchLegs: SwitchLeg[] = fixtures.filter((f) => f.kind === "switch").map((s) => ({ switchId: s.id, lightIds: switchedLights(model, s.id).map((l) => l.id) }));
+
   return {
     fixtures,
+    switchLegs,
     panel,
     circuits,
     routes,

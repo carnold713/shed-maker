@@ -7,6 +7,7 @@ import { PEN_SPECIES, SPECIES_PRESETS } from "@/rules/animals/presets";
 import { ZONE_TYPE_LABEL, defaultPenSize, zoneRect } from "@/lib/model/zones";
 import type { InteriorDoorType, Species, ZoneType } from "@/lib/model/schema";
 import { INTERIOR_DOOR_PRESETS, INTERIOR_DOOR_TYPES } from "@/lib/model/interiorDoors";
+import { DOOR_PALETTE } from "@/lib/model/openings";
 import { DockHeader, DockBody, NextStep } from "@/components/editor/Dock";
 import { Section, Toggle } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -31,6 +32,11 @@ export function LayoutStep() {
   const setRoomType = useViewStore((s) => s.setToolRoomType);
   const doorType = useViewStore((s) => s.toolInteriorDoorType) as InteriorDoorType;
   const setDoorType = useViewStore((s) => s.setToolInteriorDoorType);
+  const doorKey = useViewStore((s) => s.toolDoorKey);
+  const setDoorKey = useViewStore((s) => s.setToolDoorKey);
+  const setTool = useViewStore((s) => s.setTool);
+  const doorToolOn = tool === "interiorDoor" || tool === "door";
+  const doorValue = tool === "door" ? `ext:${doorKey}` : `int:${doorType}`;
   const autoGrow = useViewStore((s) => s.autoGrow);
   const setAutoGrow = useViewStore((s) => s.setAutoGrow);
 
@@ -90,17 +96,33 @@ export function LayoutStep() {
             <ToolButton tool="pen" icon="stall" label="Stall" keyHint="S" hint={`Click inside the walls to add a ${pw}' × ${pd}' ${SPECIES_PRESETS[species].label.toLowerCase()} stall · drag to size it`} testId="tool-pen" />
             <ToolButton tool="room" icon="room" label="Room" keyHint="R" hint={`Click inside the walls to add a ${ZONE_TYPE_LABEL[roomType].toLowerCase()}`} testId="tool-room" />
             <ToolButton tool="aisle" icon="aisle" label="Aisle" keyHint="A" hint="Click where the aisle should run · it spans the building" testId="tool-aisle" />
-            <ToolButton tool="interiorDoor" icon="door" label="Door" keyHint="D" hint="Click a stall front or room wall to add a door" testId="tool-interior-door" />
+            <button
+              onClick={() => setTool(doorToolOn ? "select" : "interiorDoor")}
+              aria-pressed={doorToolOn}
+              title="Stall and room doors go on inside walls; sliding, overhead and entry doors go on the outside walls (D)"
+              data-testid="tool-interior-door"
+              className={`flex min-w-[3.6rem] flex-col items-center gap-0.5 rounded-xl border px-2 py-1.5 text-[11px] font-medium transition ${doorToolOn ? "border-accent bg-accent text-white shadow-[0_6px_14px_-8px_rgba(238,125,43,0.9)]" : "border-border/80 bg-background/60 text-foreground/80 hover:bg-background"}`}
+            >
+              <Icon name="door" size={18} />
+              Door
+            </button>
             <ToolButton tool="erase" icon="erase" label="Remove" keyHint="E" hint="Click a stall, room or door to remove it" testId="tool-erase" />
           </ToolRow>
           {tool === "pen" ? (
             <ToolSelect label="Animal" value={species} onChange={(v) => setSpecies(v)} testId="species-picker" options={PEN_SPECIES.map((sp) => ({ value: sp, label: `${SPECIES_PRESETS[sp].label} · ${SPECIES_PRESETS[sp].minPen.join("×")} stall` }))} />
           ) : null}
           {tool === "room" ? <ToolSelect label="Room" value={roomType} onChange={(v) => setRoomType(v)} testId="room-picker" options={ROOM_TYPES.map((t) => ({ value: t, label: ZONE_TYPE_LABEL[t] }))} /> : null}
-          {tool === "interiorDoor" ? (
-            <ToolSelect label="Door" value={doorType} onChange={(v) => setDoorType(v)} testId="interior-door-picker" options={INTERIOR_DOOR_TYPES.map((t) => ({ value: t, label: INTERIOR_DOOR_PRESETS[t].label }))} />
+          {doorToolOn ? (
+            <ToolSelect
+              label="Door"
+              value={doorValue}
+              onChange={(v) => (v.startsWith("ext:") ? setDoorKey(v.slice(4)) : setDoorType(v.slice(4)))}
+              testId="interior-door-picker"
+              options={[...INTERIOR_DOOR_TYPES.map((t) => ({ value: `int:${t}`, label: INTERIOR_DOOR_PRESETS[t].label, group: "Stall & room doors (inside walls)" })), ...DOOR_PALETTE.map((d) => ({ value: `ext:${d.key}`, label: d.label, group: "Outside doors (outside walls)" }))]}
+            />
           ) : null}
           {tool === "interiorDoor" ? <p className="text-[11px] leading-snug text-muted">{INTERIOR_DOOR_PRESETS[doorType].hint} Stalls get a sliding door to the aisle by default; add more or change them here.</p> : null}
+          {tool === "door" ? <p className="text-[11px] leading-snug text-muted">Click one of the outside walls to place it. Sliding, overhead and roll-up doors are also in the Outside step.</p> : null}
           <Toggle checked={autoGrow} onChange={setAutoGrow} label="Grow the building when a stall goes past a wall" hint="On: the walls move out to the next post. Off: the stall is flagged instead." testId="auto-grow" />
         </Section>
 

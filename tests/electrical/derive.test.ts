@@ -3,7 +3,7 @@ import { createDefaultModel, parseBuildingModel } from "@/lib/model";
 import { addZone } from "@/lib/model/zones";
 import { applyLayout } from "@/lib/model/layouts";
 import { addOpening } from "@/lib/model/commands";
-import { addFixture, autoLightAll, autoLightZone, autoPlacePanel, lightsNeededFor, moveFixture, removeFixture, setElectricalService, updateFixture } from "@/lib/model/electrical";
+import { addFixture, autoLightAll, autoLightZone, autoPlacePanel, lightsNeededFor, moveFixture, removeFixture, rotateFixture, setElectricalService, switchedLights, updateFixture } from "@/lib/model/electrical";
 import { deriveElectrical } from "@/lib/electrical/derive";
 import { electricalGeometry } from "@/lib/geometry/electrical";
 import { runRules } from "@/rules";
@@ -152,5 +152,35 @@ describe("electrical rules", () => {
     expect(f.fix?.command).toBe("addFixtureAt");
     const sw = addFixture(m, { kind: "switch", x: Number(f.fix!.args!.x), y: Number(f.fix!.args!.y), wallId: String(f.fix!.args!.wallId) });
     expect(runRules(sw).findings.some((x) => x.rule === "mep.electrical.switchAtEntry")).toBe(false);
+  });
+});
+
+describe("switches, lights and walls", () => {
+  it("wall devices lock onto the nearest wall or partition; lights rotate; switches list the lights they control", () => {
+    let m = applyLayout(base(), "centerAisle", { species: "horse" });
+    // A switch dropped in the middle of a stall snaps to the stall front (partition), not the far exterior wall.
+    m = addFixture(m, { kind: "switch", x: 9, y: 6 });
+    const sw = m.electrical.fixtures[0];
+    expect(sw.x).toBe(12); // stall front at x = 12
+    expect(sw.facing).toBe("y");
+    expect(sw.wallId).toBeUndefined();
+    m = addFixture(m, { kind: "light", x: 19, y: 6 });
+    m = addFixture(m, { kind: "light", x: 19, y: 30, rotationDeg: 90 });
+    const [l1, l2] = m.electrical.fixtures.filter((f) => f.kind === "light");
+    expect(l1.rotationDeg).toBe(0);
+    m = rotateFixture(m, l1.id);
+    expect(m.electrical.fixtures.find((f) => f.id === l1.id)!.rotationDeg).toBe(90);
+    expect(switchedLights(m, sw.id).map((f) => f.id)).toEqual([l1.id, l2.id]); // only switch -> both
+    m = addFixture(m, { kind: "switch", x: 26, y: 30 });
+    const sw2 = m.electrical.fixtures.find((f) => f.kind === "switch" && f.id !== sw.id)!;
+    expect(switchedLights(m, sw.id).map((f) => f.id)).toEqual([l1.id]);
+    expect(switchedLights(m, sw2.id).map((f) => f.id)).toEqual([l2.id]);
+    m = updateFixture(m, l2.id, { switchId: sw.id });
+    expect(switchedLights(m, sw.id).map((f) => f.id)).toEqual([l1.id, l2.id]);
+    const d = deriveElectrical(m);
+    expect(d.switchLegs.find((s) => s.switchId === sw.id)?.lightIds).toEqual([l1.id, l2.id]);
+    const g = electricalGeometry(m);
+    const box = g.find((b) => b.entityId === l1.id && b.kind === "fixture")!;
+    expect(box.size[2]).toBe(4); // rotated strip runs north–south (world z)
   });
 });

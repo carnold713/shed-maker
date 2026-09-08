@@ -18,6 +18,7 @@ function selectionIdFor(b: BoxMember): string {
   if (b.kind === "wallSkin") return "footprint";
   if (b.kind === "floor" || b.kind === "partition" || b.kind === "grille" || b.kind === "stallDoor" || b.kind === "track" || b.kind === "fixture") return b.entityId;
   if (b.kind === "wire") return "electrical";
+  if (b.kind === "drain" || b.kind === "pipe") return b.entityId;
   if (b.kind === "framing") return b.id;
   if (b.kind === "roofPlane" || b.kind === "slab") return b.entityId;
   return b.entityId; // opening parts -> opening id
@@ -26,6 +27,9 @@ function selectionIdFor(b: BoxMember): string {
 function targetFor(b: BoxMember): ContextTarget["kind"] {
   if (b.kind === "wallSkin") return "wall";
   if (b.kind === "fixture") return "fixture";
+  if (b.kind === "drain" && b.entityId !== "drainage") return "drain";
+  if (b.kind === "pipe" && b.entityId === "drain_outlet") return "drainOutlet";
+  if (b.kind === "drain" || b.kind === "pipe") return "viewport";
   if (b.kind === "wire") return "viewport";
   if (b.kind === "stallDoor" || b.kind === "track") return b.entityId.startsWith("door_") ? "interiorDoor" : "zone";
   if (b.kind === "floor" || b.kind === "partition" || b.kind === "grille") return "zone";
@@ -65,6 +69,7 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
       fixture: { color: "#fbfbf6", roughness: 0.4, metalness: 0.05, emissive: "#fff6dc", emissiveIntensity: 0.6 },
       device: { color: white ? "#b9b7b2" : "#6e7378", roughness: 0.6, metalness: 0.25 },
       wire: { color: white ? "#9a9894" : "#8e8f93", roughness: 0.5, metalness: 0.3 },
+      pipe: { color: white ? "#e9e9e6" : "#f2f2ee", roughness: 0.45, metalness: 0.05 },
     };
     const by = new Map<string, Group>();
     for (const b of geometry.boxes) {
@@ -86,7 +91,7 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
       e.nativeEvent.preventDefault();
       const kind = targetFor(b);
       const id = kind === "wall" ? b.entityId : kind === "member" ? b.id : kind === "roof" ? "roof" : kind === "footprint" ? "footprint" : b.entityId;
-      if (kind === "opening" || kind === "member" || kind === "wall" || kind === "zone" || kind === "leanTo" || kind === "fixture" || kind === "interiorDoor") select(kind === "wall" ? "footprint" : id);
+      if (kind === "opening" || kind === "member" || kind === "wall" || kind === "zone" || kind === "leanTo" || kind === "fixture" || kind === "interiorDoor" || kind === "drain" || kind === "drainOutlet") select(kind === "wall" ? "footprint" : id);
       openContextMenu({ kind, id, x: e.nativeEvent.clientX, y: e.nativeEvent.clientY, from: "3d" });
     },
     [openContextMenu, select],

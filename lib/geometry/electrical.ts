@@ -25,9 +25,9 @@ function insetPoint(W: number, D: number, p: { x: number; y: number }): { x: num
 }
 
 function fixtureBox(model: BuildingModel, f: ElectricalFixture, W: number, D: number): BoxMember {
-  const alongZ = model.roof.ridgeAxis === "ns";
+  const alongZ = f.rotationDeg % 180 === 90;
   const wall = f.wallId ? model.walls.find((w) => w.id === f.wallId) : undefined;
-  const yaw = wall ? Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) : 0;
+  const yaw = wall ? Math.atan2(wall.end.y - wall.start.y, wall.end.x - wall.start.x) : f.facing === "y" ? Math.PI / 2 : 0;
   const rot: Vec3 = [0, yaw, 0];
   const inside = wall ? insetPoint(W, D, f) : f;
   const base = { id: `fx_${f.id}`, kind: "fixture" as const, layer: "electrical" as const, entityId: f.id, rotation: rot };

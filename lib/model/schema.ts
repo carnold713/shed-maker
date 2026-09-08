@@ -373,6 +373,10 @@ export const ElectricalFixture = z.object({
   label: z.string().optional(),
   /** Light fixtures: the switch that controls them. */
   switchId: Id.optional(),
+  /** Light strips: 0 = runs east–west, 90 = north–south. */
+  rotationDeg: z.number().default(0),
+  /** Wall devices on an interior partition: the direction that wall runs (exterior walls use `wallId`). */
+  facing: z.enum(["x", "y"]).optional(),
 });
 export type ElectricalFixture = z.infer<typeof ElectricalFixture>;
 
@@ -391,6 +395,44 @@ export const Electrical = z.object({
   fixtures: z.array(ElectricalFixture).default([]),
 });
 export type Electrical = z.infer<typeof Electrical>;
+
+// ---- Floor drainage (ADR-0016): drains and the outlet are placed; the
+// under-slab pipe runs, slopes, inverts and cleanouts are derived in lib/plumbing.
+
+export const DrainKind = z.enum(["floor", "trench"]);
+export type DrainKind = z.infer<typeof DrainKind>;
+
+export const Drain = z.object({
+  id: Id,
+  kind: DrainKind,
+  /** Plan position of the drain (centre of a trench), feet. */
+  x: z.number(),
+  y: z.number(),
+  /** Trench drains: channel length along `axis`, feet. */
+  lengthFt: z.number().positive().default(4),
+  axis: z.enum(["x", "y"]).default("x"),
+  label: z.string().optional(),
+});
+export type Drain = z.infer<typeof Drain>;
+
+export const DrainOutlet = z.object({
+  kind: z.enum(["daylight", "dryWell", "septic", "storm"]).default("daylight"),
+  /** Exterior wall the pipe leaves through, and where along it. */
+  wallId: Id,
+  offsetFt: z.number().nonnegative(),
+});
+export type DrainOutlet = z.infer<typeof DrainOutlet>;
+
+export const Drainage = z.object({
+  drains: z.array(Drain).default([]),
+  outlet: DrainOutlet.optional(),
+  pipeDiaIn: z.union([z.literal(3), z.literal(4), z.literal(6)]).default(4),
+  /** Pipe fall, inches per foot (IPC 704.1: ⅛" min for 3"–6" pipe; ¼" preferred). */
+  slopeInPerFt: z.number().positive().default(0.25),
+  /** How much lower the ground is at the outlet point than at the building, inches (site fall). */
+  siteFallIn: z.number().nonnegative().default(0),
+});
+export type Drainage = z.infer<typeof Drainage>;
 
 export const Meta = z.object({
   name: z.string().min(1),
@@ -415,6 +457,7 @@ export const BuildingModel = z.object({
   zones: z.array(Zone).default([]),
   fixtures: z.array(Fixture).default([]),
   electrical: Electrical.prefault({}),
+  drainage: Drainage.prefault({}),
   materials: MaterialChoices.prefault({}),
   overrides: z.array(Override).default([]),
   /** Per-project unit-cost overrides keyed by price sku (SPEC §7.8). */

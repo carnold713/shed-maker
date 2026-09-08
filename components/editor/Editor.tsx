@@ -113,6 +113,7 @@ function useKeyboardShortcuts() {
       const leanTo = sel ? model?.leanTos.find((l) => l.id === sel) : undefined;
       const fixture = sel ? model?.electrical.fixtures.find((f) => f.id === sel) : undefined;
       const door = sel ? model?.zones.flatMap((z) => z.doors).find((d) => d.id === sel) : undefined;
+      const drain = sel ? model?.drainage.drains.find((d) => d.id === sel) : undefined;
 
       if (e.key === "Delete" || e.key === "Backspace") {
         if (opening) ps.removeOpening(opening.id);
@@ -120,6 +121,8 @@ function useKeyboardShortcuts() {
         else if (leanTo) ps.removeLeanTo(leanTo.id);
         else if (fixture) ps.removeFixture(fixture.id);
         else if (door) ps.removeInteriorDoor(door.id);
+        else if (drain) ps.removeDrain(drain.id);
+        else if (sel === "drain_outlet") ps.removeOutlet();
         else return;
         e.preventDefault();
         return;
@@ -144,6 +147,11 @@ function useKeyboardShortcuts() {
         }
         return;
       }
+      if (fixture && fixture.kind === "light" && e.key.toLowerCase() === "r" && !e.shiftKey) {
+        e.preventDefault();
+        ps.rotateFixture(fixture.id);
+        return;
+      }
       // Escape ladder: menu → tool → selection.
       if (e.key === "Escape") {
         if (vs.contextMenu) vs.closeContextMenu();
@@ -156,6 +164,7 @@ function useKeyboardShortcuts() {
       const stepTools: Partial<Record<Step, Record<string, typeof vs.tool>>> = {
         layout: { v: "select", s: "pen", p: "pen", r: "room", a: "aisle", d: "interiorDoor", e: "erase" },
         outside: { v: "select", d: "door", w: "window", l: "leanTo", e: "erase" },
+        building: { v: "select", d: "drain", e: "erase" },
         electrical: { v: "select", l: "fixture", e: "erase" },
       };
       const tools = stepTools[vs.step];
@@ -163,8 +172,7 @@ function useKeyboardShortcuts() {
         vs.setTool(tools[k]);
         return;
       }
-      if (k === "x") vs.setCutHeight(vs.cutHeightFt === null ? 4 : null);
-      else if (k === "f") vs.requestFit();
+      if (k === "f") vs.requestFit();
       else if (k === "i") vs.setIsometric(!vs.isometric);
       else if (e.key === "`") vs.setPreset(vs.preset === "framing" ? "exterior" : "framing");
     };

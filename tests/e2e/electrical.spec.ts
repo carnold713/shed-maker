@@ -22,6 +22,14 @@ test("wizard builds a full barn; electrical step lights it, places devices and s
   await expect(page.getByTestId("plan-fixture-panel")).toHaveCount(1);
   const lights = await page.getByTestId("plan-fixture-light").count();
   expect(lights).toBeGreaterThanOrEqual(6);
+  // The wizard's switch by the door shows dotted legs to the lights it controls; a light can be turned with R.
+  expect(await page.getByTestId("plan-switch-leg").count()).toBeGreaterThanOrEqual(1);
+  await page.getByTestId("plan-fixture-light").first().click();
+  const rotation = page.getByTestId("fixture-rotation");
+  const before = await rotation.inputValue();
+  await page.getByTestId("fixture-rotate").click();
+  expect(await rotation.inputValue()).not.toBe(before);
+  await page.getByTestId("dock-back").click();
 
   // Place a heater with the tool: it snaps to a wall and gets its own 2-pole breaker.
   await page.getByTestId("tool-fixture").click();

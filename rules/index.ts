@@ -8,6 +8,7 @@ import { aisleMinWidth, partitionOnPostLine, penHasAccess, penMinimumSize, zones
 import { leanToClearance, leanToRafterSpan } from "./design/leanTos";
 import { interiorDoorWidth, zoneHasDoor } from "./design/interiorDoors";
 import { ELECTRICAL_RULES } from "./mep/electrical";
+import { DRAINAGE_RULES } from "./mep/drainage";
 
 export * from "./types";
 
@@ -31,6 +32,7 @@ export const RULES: Rule[] = [
   interiorDoorWidth,
   zoneHasDoor,
   ...ELECTRICAL_RULES,
+  ...DRAINAGE_RULES,
   footprintModule,
 ];
 

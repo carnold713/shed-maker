@@ -41,7 +41,18 @@ test("M3 layout: stamp stalls, layout generator, grow/fit, doors, edit and delet
   await page.getByTestId("interior-door-type").selectOption("dutch");
   await expect(page.getByTestId("plan-door-dutch")).toHaveCount(1);
   await expect(page.getByTestId("plan-door-stallSlide")).toHaveCount(5);
-  await page.getByTestId("dock-back").click();
+  await page.keyboard.press("Escape");
+
+  // Door tool: a hinged stall door on the wall between two stalls (a click on the stall tile must reach the tool).
+  await page.getByTestId("tool-interior-door").click();
+  await page.getByTestId("interior-door-picker").selectOption("int:stallHinged");
+  const firstPen = (await page.getByTestId("plan-zone-pen").first().boundingBox())!;
+  await page.mouse.move(firstPen.x + firstPen.width / 2, firstPen.y + 4);
+  await expect(page.getByTestId("status-hint")).toContainText("Click to add a hinged stall door");
+  await page.mouse.click(firstPen.x + firstPen.width / 2, firstPen.y + 4);
+  await expect(page.getByTestId("plan-door-stallHinged")).toHaveCount(1);
+  await expect(page.getByTestId("dock-title")).toContainText("Hinged stall door");
+  await page.keyboard.press("Escape"); // clear the selection -> Layout panel
 
   // Select the last-bay stall, change its animal and deepen it; the building grows to fit on the post spacing.
   await page.getByTestId("plan-zone-pen").nth(4).click();
@@ -63,8 +74,8 @@ test("M3 layout: stamp stalls, layout generator, grow/fit, doors, edit and delet
   await page.getByRole("menuitem", { name: /Door to the outside/ }).click();
   await expect(page.getByTestId("plan-opening-dutchDoor")).toHaveCount(1);
 
-  // 3D cutaway shows partitions; autosave lands; reload keeps the interior.
-  await pickView(page, "view-cutaway");
+  // Roof-off 3D shows partitions; autosave lands; reload keeps the interior.
+  await pickView(page, "view-noroof");
   await page.screenshot({ path: "test-results/interior.png" });
   await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 10_000 });
   await page.reload();

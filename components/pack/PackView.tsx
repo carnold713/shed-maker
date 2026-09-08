@@ -12,6 +12,8 @@ import { cutList } from "@/lib/bom/cutlist";
 import { hardwareSchedule } from "@/lib/bom/hardware";
 import { buildSequence } from "@/lib/bom/sequence";
 import { quickQuantities } from "@/lib/bom/quick";
+import { deriveDrainage } from "@/lib/plumbing/drainage";
+import { DRAIN_PRESETS, OUTLET_LABEL } from "@/lib/model/drainage";
 import { runRules } from "@/rules";
 import { zoneRect, ZONE_TYPE_LABEL } from "@/lib/model/zones";
 import { OPENING_PRESETS } from "@/lib/model/openings";
@@ -36,11 +38,13 @@ export function PackView({ projectId, model }: { projectId: string; model: Build
     const geometry = deriveGeometry(model);
     const partitions = derivePartitions(model);
     const electrical = model.electrical.fixtures.length ? deriveElectrical(model) : null;
+    const drainage = model.drainage.drains.length ? deriveDrainage(model) : null;
     return {
       framing,
       geometry,
       partitions,
       electrical,
+      drainage,
       estimate: estimateMaterials(model, framing, geometry),
       cuts: cutList(model, framing),
       hardware: hardwareSchedule(model, framing, geometry),
@@ -57,7 +61,7 @@ export function PackView({ projectId, model }: { projectId: string; model: Build
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const name = model.meta.name;
   const walls = model.walls.filter((w) => w.role === "exterior");
-  const sheets = ["G0", "A1", "S1", "S2", "S3", ...(d.electrical ? ["E1"] : []), "A2", "M1", "M2", "M3", "M4"];
+  const sheets = ["G0", "A1", "S1", ...(d.drainage ? ["P1"] : []), "S2", "S3", ...(d.electrical ? ["E1"] : []), "A2", "M1", "M2", "M3", "M4"];
   const total = sheets.length;
   const n = (code: string) => sheets.indexOf(code) + 1;
   const stalls = model.zones.filter((z) => z.type === "pen");
@@ -104,12 +108,13 @@ export function PackView({ projectId, model }: { projectId: string; model: Build
                 ["Frame", model.frame.system === "postFrame" ? `${model.frame.post.size.replace("x", "×")} posts every ${model.frame.bayFt}', trusses every ${model.frame.trusses.spacingIn / 12}'` : `${model.frame.studs.size.replace("x", "×")} studs at ${model.frame.studs.spacingIn}"`],
                 ["Concrete", model.foundation.slab.enabled ? `${model.foundation.slab.thicknessIn}" slab${model.foundation.slab.aprons ? " with aprons" : ""}` : "none"],
                 ["Electrical", d.electrical ? `${d.electrical.load.serviceAmps} A panel · ${d.electrical.circuits.length} circuits · ${model.electrical.fixtures.length} devices` : "not planned"],
+                ["Drains", d.drainage ? `${model.drainage.drains.length} · ${d.drainage.pipe.totalFt}' of ${d.drainage.pipe.diaIn}" pipe${d.drainage.outlet ? ` ${OUTLET_LABEL[d.drainage.outlet.kind].split(" (")[0].toLowerCase()}` : ""}` : "none"],
                 ["Materials estimate", `${formatUsd(d.estimate.total)} (${formatUsd(d.estimate.low)}–${formatUsd(d.estimate.high)}), placeholder prices`],
                 ["Frost depth", `${model.site.frostDepthIn ?? "?"}" ${model.site.verified.frost ? "verified" : "NOT verified"}`],
                 ["Checks", d.report.errors ? `${d.report.errors} must-fix, ${d.report.warnings} warnings` : d.report.warnings ? `${d.report.warnings} warnings` : "all clear"],
               ]}
             />
-            <Table head={["Sheet", "Title"]} rows={[["G0", "Cover & index"], ["A1", "Floor plan"], ["S1", "Foundation & post plan"], ["S2", "Wall framing elevations"], ["S3", "Roof framing plan"], ...(d.electrical ? [["E1", "Electrical plan & panel schedule"]] : []), ["A2", "Door, window & room schedules"], ["M1", "Materials & cost estimate"], ["M2", "Cut list"], ["M3", "Hardware schedule"], ["M4", "Build sequence"]]} />
+            <Table head={["Sheet", "Title"]} rows={[["G0", "Cover & index"], ["A1", "Floor plan"], ["S1", "Foundation & post plan"], ...(d.drainage ? [["P1", "Floor drainage plan (for the concrete crew)"]] : []), ["S2", "Wall framing elevations"], ["S3", "Roof framing plan"], ...(d.electrical ? [["E1", "Electrical plan & panel schedule"]] : []), ["A2", "Door, window & room schedules"], ["M1", "Materials & cost estimate"], ["M2", "Cut list"], ["M3", "Hardware schedule"], ["M4", "Build sequence"]]} />
             <p className="text-[10px] leading-relaxed text-muted">These drawings are a planning and communication aid generated from a model. Framing is prescriptive post-frame practice; loads, foundations and the electrical design must be confirmed by a licensed professional and your building department before construction.</p>
           </div>
         </div>
@@ -135,6 +140,32 @@ export function PackView({ projectId, model }: { projectId: string; model: Build
           </div>
         </div>
       </Sheet>
+
+      {/* P1 drainage */}
+      {d.drainage ? (
+        <Sheet n={n("P1")} total={total} code="P1" title="Floor drainage plan" project={name} date={date}>
+          <div className="grid grid-cols-[1.45fr_1fr] gap-4">
+            <PlanSheet model={model} framing={d.framing} partitions={d.partitions} electrical={null} drainage={d.drainage} mode="drainage" widthPx={620} heightPx={SH} />
+            <div className="flex flex-col gap-3">
+              <Table
+                testId="drain-schedule"
+                head={["Drain", "Kind", "Where", "Slab slope", "High point", "Invert", "Run"]}
+                rows={d.drainage.drains.map((dd, i) => [`FD${i + 1}`, dd.drain.kind === "trench" ? `Trench ${formatFtIn(dd.drain.lengthFt)}` : DRAIN_PRESETS.floor.label, dd.zone?.name ?? "open floor", `${dd.slabSlopeInPerFt * 8}/8"/ft`, `+${dd.highPointIn}" at ${dd.farthestFt}'`, `−${dd.invertIn}"`, dd.runFt ? `${dd.runFt}'` : "—"])}
+              />
+              <KeyValue
+                items={[
+                  ["Pipe", `${d.drainage.pipe.diaIn}" PVC · ${d.drainage.pipe.totalFt}' · ${d.drainage.pipe.slopeInPerFt * 8}/8" per foot · ${d.drainage.pipe.bends} bends`],
+                  ["Cleanouts", `${d.drainage.cleanouts.length} (${d.drainage.cleanouts.map((c) => c.why).join(", ")})`],
+                  ["Outlet", d.drainage.outlet ? `${OUTLET_LABEL[d.drainage.outlet.kind]} · ${SIDE[(d.drainage.outlet.wallId.replace("wall_ext_", "") as keyof typeof SIDE)]} wall · invert −${d.drainage.outlet.invertIn}"` : "none — place one"],
+                  ["Ground at outlet", d.drainage.outlet ? `−${d.drainage.outlet.groundIn}" (${model.drainage.siteFallIn}" of site fall) · ${d.drainage.outlet.kind !== "daylight" ? "n/a" : d.drainage.outlet.daylightOk ? "pipe clears the ground" : `needs ${d.drainage.outlet.fallNeededIn}" more fall`}` : "—"],
+                ]}
+              />
+              <Notes title="For the concrete crew" items={d.drainage.notes} />
+              <p className="text-[10px] text-muted">Elevations are inches below the finished floor (0). Confirm the outlet, traps and interceptor with the plumber and the building department (IPC 704, 708, 1002).</p>
+            </div>
+          </div>
+        </Sheet>
+      ) : null}
 
       {/* S2 wall elevations */}
       <Sheet n={n("S2")} total={total} code="S2" title="Wall framing elevations" project={name} date={date}>

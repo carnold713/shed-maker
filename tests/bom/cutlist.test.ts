@@ -92,7 +92,7 @@ describe("hardware schedule and build sequence", () => {
     expect(steps.find((s) => s.title === "Batter boards and lines")?.check).toContain("52'"); // 38×36 -> 52' 4"
     expect(steps.some((s) => s.title === "Stalls and rooms")).toBe(true);
     expect(steps.some((s) => s.title === "Electrical rough-in")).toBe(false);
-    m = { ...m, electrical: { ...m.electrical, fixtures: [{ id: "f", kind: "light", x: 5, y: 5, mountFt: 9, watts: 40, volts: 120 }] } };
+    m = { ...m, electrical: { ...m.electrical, fixtures: [{ id: "f", kind: "light", x: 5, y: 5, mountFt: 9, watts: 40, volts: 120, rotationDeg: 0 }] } };
     expect(buildSequence(m, framing).some((s) => s.title === "Electrical rough-in")).toBe(true);
   });
 });

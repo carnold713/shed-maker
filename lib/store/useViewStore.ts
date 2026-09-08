@@ -3,9 +3,9 @@
 import { create } from "zustand";
 import type { Layer } from "@/lib/framing/types";
 
-export type ViewPreset = "exterior" | "framing" | "dollhouse" | "interior" | "plan";
+export type ViewPreset = "exterior" | "noRoof" | "framing" | "interior" | "plan";
 
-export const ALL_LAYERS: Layer[] = ["slab", "foundation", "framing", "roofStructure", "roofing", "siding", "openings", "interior", "electrical"];
+export const ALL_LAYERS: Layer[] = ["slab", "foundation", "framing", "roofStructure", "roofing", "siding", "openings", "interior", "electrical", "drainage"];
 
 export const LAYER_LABEL: Record<Layer, string> = {
   slab: "Slab",
@@ -17,18 +17,19 @@ export const LAYER_LABEL: Record<Layer, string> = {
   openings: "Doors & windows",
   interior: "Stalls & rooms",
   electrical: "Electrical",
+  drainage: "Drains",
 };
 
 const PRESET_LAYERS: Record<ViewPreset, Layer[]> = {
-  exterior: ["slab", "roofing", "siding", "openings", "interior", "electrical"],
-  framing: ["slab", "foundation", "framing", "roofStructure", "interior", "electrical"],
-  dollhouse: ["slab", "framing", "siding", "openings", "interior", "electrical"],
-  interior: ["slab", "framing", "roofStructure", "siding", "openings", "interior", "electrical"],
-  plan: ["slab", "framing", "siding", "openings", "interior", "electrical"],
+  exterior: ["slab", "roofing", "roofStructure", "siding", "openings", "interior", "electrical", "drainage"],
+  noRoof: ["slab", "framing", "siding", "openings", "interior", "electrical", "drainage"],
+  framing: ["slab", "foundation", "framing", "interior", "electrical", "drainage"],
+  interior: ["slab", "framing", "roofStructure", "siding", "openings", "interior", "electrical", "drainage"],
+  plan: ["slab", "framing", "siding", "openings", "interior", "electrical", "drainage"],
 };
 
 /** Plain-English names for the 3D presets (UX audit §4). */
-export const PRESET_LABEL: Record<ViewPreset, string> = { exterior: "Outside", framing: "Framing", dollhouse: "Cutaway", interior: "Inside", plan: "Plan" };
+export const PRESET_LABEL: Record<ViewPreset, string> = { exterior: "Outside", noRoof: "Roof off", framing: "Framing", interior: "Inside", plan: "Plan" };
 
 /** Editor steps (ADR-0012): the rail walks through them; each shows one dock panel and its own tools. */
 export type Step = "project" | "layout" | "building" | "outside" | "electrical" | "check" | "plans";
@@ -42,7 +43,7 @@ export const STEPS: { id: Step; label: string; hint: string }[] = [
   { id: "plans", label: "Plans", hint: "Blueprints, materials, cost" },
 ];
 /** 3D preset that best shows each step's work. */
-const STEP_PRESET: Partial<Record<Step, ViewPreset>> = { layout: "dollhouse", building: "exterior", outside: "exterior", electrical: "dollhouse", check: "exterior" };
+const STEP_PRESET: Partial<Record<Step, ViewPreset>> = { layout: "framing", building: "exterior", outside: "noRoof", electrical: "noRoof", check: "exterior" };
 
 export type StageView = "plan" | "both" | "3d";
 /** Default stage split per step (UX audit §2.2); the user's choice sticks per step. */
@@ -52,10 +53,10 @@ export const STEP_PLAN_PCT: Record<Step, number> = { project: 50, layout: 58, bu
 
 export type RenderMode = "realistic" | "white";
 
-export type PlanTool = "select" | "pen" | "aisle" | "room" | "door" | "window" | "leanTo" | "interiorDoor" | "fixture" | "erase";
+export type PlanTool = "select" | "pen" | "aisle" | "room" | "door" | "window" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "erase";
 
 export interface ContextTarget {
-  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone" | "leanTo" | "interiorDoor" | "fixture";
+  kind: "wall" | "opening" | "member" | "roof" | "footprint" | "empty" | "viewport" | "zone" | "leanTo" | "interiorDoor" | "fixture" | "drain" | "drainOutlet";
   /** Plan position under the cursor, feet (empty-space menus). */
   planX?: number;
   planY?: number;
@@ -73,8 +74,6 @@ export interface ViewState {
   preset: ViewPreset;
   visibleLayers: Set<Layer>;
   renderMode: RenderMode;
-  /** Horizontal cut height above finished floor, feet; null = no cut. */
-  cutHeightFt: number | null;
   /** Bumps when the camera should re-fit. */
   fitNonce: number;
   contextMenu: ContextTarget | null;
@@ -89,6 +88,8 @@ export interface ViewState {
   /** Door type for the interior-door tool and fixture kind for the electrical tool. */
   toolInteriorDoorType: string;
   toolFixtureKind: string;
+  /** Drain tool: floor drain, trench drain, or the outlet. */
+  toolDrainKind: "floor" | "trench" | "outlet";
   /** Orthographic isometric camera (game-like) instead of perspective. */
   isometric: boolean;
   /** Grow the building automatically when a zone lands outside it (SPEC §18.2 "Just do it"). */
@@ -105,7 +106,6 @@ export interface ViewState {
   toggleLayer: (l: Layer) => void;
   setLayers: (ls: Layer[]) => void;
   setRenderMode: (m: RenderMode) => void;
-  setCutHeight: (ft: number | null) => void;
   requestFit: () => void;
   openContextMenu: (t: ContextTarget) => void;
   closeContextMenu: () => void;
@@ -119,6 +119,7 @@ export interface ViewState {
   setIsometric: (v: boolean) => void;
   setToolInteriorDoorType: (t: string) => void;
   setToolFixtureKind: (k: string) => void;
+  setToolDrainKind: (k: "floor" | "trench" | "outlet") => void;
   setStep: (s: Step) => void;
   setStageView: (v: StageView) => void;
   setStagePlanPct: (pct: number) => void;
@@ -129,7 +130,6 @@ export const useViewStore = create<ViewState>()((set) => ({
   preset: "exterior",
   visibleLayers: new Set(PRESET_LAYERS.exterior),
   renderMode: "realistic",
-  cutHeightFt: null,
   fitNonce: 0,
   contextMenu: null,
   hovered: null,
@@ -142,17 +142,13 @@ export const useViewStore = create<ViewState>()((set) => ({
   isometric: false,
   toolInteriorDoorType: "stallSlide",
   toolFixtureKind: "light",
+  toolDrainKind: "floor",
   step: "layout",
   stageViews: { ...STEP_STAGE_VIEW },
   stagePlanPcts: { ...STEP_PLAN_PCT },
   hint: null,
 
-  setPreset: (preset) =>
-    set({
-      preset,
-      visibleLayers: new Set(PRESET_LAYERS[preset]),
-      cutHeightFt: preset === "dollhouse" ? 4 : null,
-    }),
+  setPreset: (preset) => set({ preset, visibleLayers: new Set(PRESET_LAYERS[preset]) }),
   toggleLayer: (l) =>
     set((s) => {
       const next = new Set(s.visibleLayers);
@@ -162,20 +158,20 @@ export const useViewStore = create<ViewState>()((set) => ({
     }),
   setLayers: (ls) => set({ visibleLayers: new Set(ls) }),
   setRenderMode: (renderMode) => set({ renderMode }),
-  setCutHeight: (cutHeightFt) => set({ cutHeightFt }),
   requestFit: () => set((s) => ({ fitNonce: s.fitNonce + 1 })),
   openContextMenu: (contextMenu) => set({ contextMenu }),
   closeContextMenu: () => set({ contextMenu: null }),
   setHovered: (hovered) => set({ hovered }),
-  setTool: (tool) => set({ tool }),
-  setToolSpecies: (toolSpecies) => set({ toolSpecies, tool: "pen" }),
-  setToolRoomType: (toolRoomType) => set({ toolRoomType, tool: "room" }),
-  setToolDoorKey: (toolDoorKey) => set({ toolDoorKey, tool: "door" }),
-  setToolWindowKey: (toolWindowKey) => set({ toolWindowKey, tool: "window" }),
+  setTool: (tool) => set({ tool, hint: null }),
+  setToolSpecies: (toolSpecies) => set({ toolSpecies, tool: "pen", hint: null }),
+  setToolRoomType: (toolRoomType) => set({ toolRoomType, tool: "room", hint: null }),
+  setToolDoorKey: (toolDoorKey) => set({ toolDoorKey, tool: "door", hint: null }),
+  setToolWindowKey: (toolWindowKey) => set({ toolWindowKey, tool: "window", hint: null }),
   setAutoGrow: (autoGrow) => set({ autoGrow }),
   setIsometric: (isometric) => set({ isometric }),
-  setToolInteriorDoorType: (toolInteriorDoorType) => set({ toolInteriorDoorType, tool: "interiorDoor" }),
-  setToolFixtureKind: (toolFixtureKind) => set({ toolFixtureKind, tool: "fixture" }),
+  setToolInteriorDoorType: (toolInteriorDoorType) => set({ toolInteriorDoorType, tool: "interiorDoor", hint: null }),
+  setToolFixtureKind: (toolFixtureKind) => set({ toolFixtureKind, tool: "fixture", hint: null }),
+  setToolDrainKind: (toolDrainKind) => set({ toolDrainKind, tool: "drain", hint: null }),
   setStep: (step) =>
     set((s) => {
       const preset = STEP_PRESET[step];
@@ -183,7 +179,8 @@ export const useViewStore = create<ViewState>()((set) => ({
         step,
         tool: "select",
         contextMenu: null,
-        ...(preset && preset !== s.preset ? { preset, visibleLayers: new Set(PRESET_LAYERS[preset]), cutHeightFt: preset === "dollhouse" ? 4 : null } : {}),
+        hint: null,
+        ...(preset && preset !== s.preset ? { preset, visibleLayers: new Set(PRESET_LAYERS[preset]) } : {}),
       };
     }),
   setStageView: (v) => set((s) => ({ stageViews: { ...s.stageViews, [s.step]: v } })),

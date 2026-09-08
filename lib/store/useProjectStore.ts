@@ -11,6 +11,7 @@ import { applyLayout, type LayoutOptions, type LayoutPattern } from "@/lib/model
 import * as lc from "@/lib/model/leanTos";
 import * as dc from "@/lib/model/interiorDoors";
 import * as ec from "@/lib/model/electrical";
+import * as drc from "@/lib/model/drainage";
 
 import { newId } from "@/lib/model/ids";
 
@@ -84,6 +85,17 @@ export interface ProjectState {
   autoPlacePanel: () => void;
   autoLightZone: (zoneId: string) => void;
   autoLightAll: () => void;
+  rotateFixture: (id: string) => void;
+
+  addDrain: (input: drc.AddDrainInput) => string | null;
+  updateDrain: (id: string, patch: Parameters<typeof drc.updateDrain>[2]) => void;
+  moveDrain: (id: string, x: number, y: number) => void;
+  removeDrain: (id: string) => void;
+  setOutlet: (input: Parameters<typeof drc.setOutlet>[1]) => void;
+  removeOutlet: () => void;
+  setDrainageOptions: (patch: Parameters<typeof drc.setDrainageOptions>[1]) => void;
+  autoOutlet: () => void;
+  autoDrainWashBays: () => void;
 }
 
 type FramePatch = Partial<{ [K in keyof Frame]: Frame[K] extends object ? Partial<Frame[K]> : Frame[K] }>;
@@ -209,6 +221,27 @@ export const useProjectStore = create<ProjectState>()(
         autoPlacePanel: () => apply((m) => ec.autoPlacePanel(m)),
         autoLightZone: (zoneId) => apply((m) => ec.autoLightZone(m, zoneId)),
         autoLightAll: () => apply((m) => ec.autoLightAll(m)),
+        rotateFixture: (id) => apply((m) => ec.rotateFixture(m, id)),
+
+        addDrain: (input) => {
+          const id = input.id ?? newId("drain");
+          apply((m) => drc.addDrain(m, { ...input, id }));
+          return get().model?.drainage.drains.some((d) => d.id === id) ? id : null;
+        },
+        updateDrain: (id, patch) => apply((m) => drc.updateDrain(m, id, patch)),
+        moveDrain: (id, x, y) => apply((m) => drc.moveDrain(m, id, x, y)),
+        removeDrain: (id) => {
+          apply((m) => drc.removeDrain(m, id));
+          if (get().selection === id) set({ selection: null });
+        },
+        setOutlet: (input) => apply((m) => drc.setOutlet(m, input)),
+        removeOutlet: () => {
+          apply((m) => drc.removeOutlet(m));
+          if (get().selection === drc.OUTLET_ID) set({ selection: null });
+        },
+        setDrainageOptions: (patch) => apply((m) => drc.setDrainageOptions(m, patch)),
+        autoOutlet: () => apply((m) => drc.autoOutlet(m)),
+        autoDrainWashBays: () => apply((m) => drc.autoDrainWashBays(m)),
         transaction: (fn) => {
           const temporal = useProjectStore.temporal.getState();
           const start = get().model;

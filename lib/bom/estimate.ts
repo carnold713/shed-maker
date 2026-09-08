@@ -14,6 +14,7 @@ import { interiorDoors } from "@/lib/interior/partitions";
 import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
 import { deriveElectrical } from "@/lib/electrical/derive";
 import { FIXTURE_PRESETS } from "@/lib/model/electrical";
+import { deriveDrainage } from "@/lib/plumbing/drainage";
 
 export interface EstimateLine {
   category: PriceCategory;
@@ -191,6 +192,23 @@ export function estimateMaterials(model: BuildingModel, framing: FramingSet, geo
     const feederSku = e.load.serviceAmps <= 60 ? "elec.feeder60.ft" : e.load.serviceAmps <= 125 ? "elec.feeder100.ft" : "elec.feeder200.ft";
     add("electrical", feederSku, `Buried feeder from the ${model.electrical.service.feedFrom === "meter" ? "meter" : "house panel"} (${model.electrical.service.feederLengthFt}')`, model.electrical.service.feederLengthFt + 10, "lf");
     add("electrical", "elec.circuitMisc", "Straps, connectors, labels", e.circuits.length, "each");
+  }
+
+  // ---- Floor drainage (rough-in materials)
+  if (model.drainage.drains.length > 0) {
+    const dd = deriveDrainage(model);
+    const floors = model.drainage.drains.filter((d) => d.kind === "floor").length;
+    const trenchFt = model.drainage.drains.filter((d) => d.kind === "trench").reduce((s, d) => s + d.lengthFt, 0);
+    add("plumbing", "drain.floor4", "Floor drains with trap and grate", floors, "each");
+    add("plumbing", "drain.trench.lf", "Trench drain channel and grate", trenchFt, "lf");
+    add("plumbing", "drain.catchBasin", "Catch basins at trench drain outlets", model.drainage.drains.filter((d) => d.kind === "trench").length, "each");
+    add("plumbing", "drain.trapPrimer", "Trap primers", model.drainage.drains.length, "each");
+    add("plumbing", `pipe.pvc${model.drainage.pipeDiaIn}.ft`, `${model.drainage.pipeDiaIn}" PVC drain pipe (+10%)`, dd.pipe.totalFt * 1.1 + (dd.outlet ? 12 : 0), "lf");
+    add("plumbing", "pipe.bedding.ft", "Gravel bedding under the pipe", dd.pipe.totalFt, "lf");
+    add("plumbing", "pipe.fitting", "Fittings (bends, tees, couplings)", dd.pipe.bends + model.drainage.drains.length * 2, "each");
+    add("plumbing", "pipe.cleanout", "Cleanouts", dd.cleanouts.length, "each");
+    if (dd.outlet?.kind === "daylight") add("plumbing", "drain.daylightEnd", "Daylight outlet end", 1, "each");
+    if (dd.outlet?.kind === "dryWell") add("plumbing", "drain.dryWell", "Dry well", 1, "each");
   }
 
   // ---- Totals

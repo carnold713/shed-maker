@@ -7,7 +7,7 @@ import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
 import { FIXTURE_PRESETS } from "@/lib/model/electrical";
 
 /** What a click will do with the armed tool — the status bar's centre line (UX audit §3.7). */
-export function toolHint(vs: Pick<ViewState, "tool" | "toolSpecies" | "toolRoomType" | "toolDoorKey" | "toolWindowKey" | "toolInteriorDoorType" | "toolFixtureKind">, model: BuildingModel | null): string | null {
+export function toolHint(vs: Pick<ViewState, "tool" | "toolSpecies" | "toolRoomType" | "toolDoorKey" | "toolWindowKey" | "toolInteriorDoorType" | "toolFixtureKind" | "toolDrainKind">, model: BuildingModel | null): string | null {
   switch (vs.tool) {
     case "pen": {
       const sp = vs.toolSpecies as Species;
@@ -32,8 +32,10 @@ export function toolHint(vs: Pick<ViewState, "tool" | "toolSpecies" | "toolRoomT
       return "Click an outside wall to add a lean-to on that side · Esc to cancel";
     case "fixture": {
       const p = FIXTURE_PRESETS[vs.toolFixtureKind as FixtureKind];
-      return p.wall ? `Click near a wall to mount a ${p.short.toLowerCase()} · Esc to cancel` : `Click where the ${p.short.toLowerCase()} goes · Esc to cancel`;
+      return p.wall ? `Click to mount a ${p.short.toLowerCase()} · it locks onto the nearest wall or partition · Esc to cancel` : `Click where the ${p.short.toLowerCase()} goes · R turns it after · Esc to cancel`;
     }
+    case "drain":
+      return vs.toolDrainKind === "outlet" ? "Click an outside wall where the pipe should leave · Esc to cancel" : vs.toolDrainKind === "trench" ? "Click where the trench drain goes · it spans the wash bay or room it lands in · Esc to cancel" : "Click where the floor drain goes (aisle or wash bay, never a stall) · Esc to cancel";
     case "erase":
       return "Click a stall, room, door, window, lean-to or fixture to remove it · Esc when done";
     default:

@@ -16,14 +16,13 @@ import { ClipGroup } from "./ClipGroup";
 import { PostFX } from "./PostFX";
 
 /**
- * 3D viewer: exterior orbit, framing-only, dollhouse and interior presets,
- * per-layer visibility, horizontal cutaway via a clipping plane (SPEC §8).
+ * 3D viewer: outside, roof-off, framing and inside presets with per-layer
+ * visibility (SPEC §8). Clipping stays wired for future section views.
  */
 export function Viewer() {
   const model = useProjectStore((s) => s.model);
   const { geometry } = useDerived();
   const preset = useViewStore((s) => s.preset);
-  const cut = useViewStore((s) => s.cutHeightFt);
   const setHint = useViewStore((s) => s.setHint);
   const fitNonce = useViewStore((s) => s.fitNonce);
   const openContextMenu = useViewStore((s) => s.openContextMenu);
@@ -33,7 +32,7 @@ export function Viewer() {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.Camera | null>(null);
 
-  const clippingPlanes = useMemo(() => (cut === null ? [] : [new THREE.Plane(new THREE.Vector3(0, -1, 0), cut)]), [cut]);
+  const clippingPlanes = useMemo<THREE.Plane[]>(() => [], []);
 
   const screenshot = useCallback(() => {
     const gl = glRef.current;

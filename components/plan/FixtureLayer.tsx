@@ -43,9 +43,28 @@ export function FixtureLayer({
             return <polyline key={route.circuitId} points={pts} fill="none" stroke={color} strokeWidth={1.2} strokeDasharray="5 3" opacity={0.75} pointerEvents="none" />;
           })
         : null}
+      {/* switch legs: which lights a switch controls */}
+      {showRoutes
+        ? derived.switchLegs.flatMap((leg) => {
+            const s = fixtures.find((f) => f.id === leg.switchId);
+            if (!s) return [];
+            return leg.lightIds.map((id) => {
+              const l = fixtures.find((f) => f.id === id);
+              if (!l) return null;
+              const x1 = px(s.x);
+              const y1 = py(s.y);
+              const x2 = px(l.x);
+              const y2 = py(l.y);
+              const mx = (x1 + x2) / 2 + (y1 - y2) * 0.15;
+              const my = (y1 + y2) / 2 + (x2 - x1) * 0.15;
+              return <path key={`${leg.switchId}_${id}`} d={`M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`} fill="none" stroke="#7a5aa6" strokeWidth={1} strokeDasharray="2 3" opacity={0.8} pointerEvents="none" data-testid="plan-switch-leg" />;
+            });
+          })
+        : null}
       {fixtures.map((f) => {
         const cx = px(f.x);
         const cy = py(f.y);
+        const rot = f.kind === "light" ? f.rotationDeg : f.facing === "y" || (f.wallId === "wall_ext_e" || f.wallId === "wall_ext_w") ? 90 : 0;
         const sel = selection === f.id;
         const hov = hovered === f.id;
         const stroke = sel ? "#b5532a" : hov ? "#d98a5f" : "#1c1b19";
@@ -53,7 +72,9 @@ export function FixtureLayer({
         return (
           <g key={f.id} className="cursor-pointer" onPointerDown={(e) => onPointerDown(f, e)} onContextMenu={(e) => onContextMenu(f, e)} onMouseEnter={() => onHover(f)} onMouseLeave={() => onHover(null)} data-testid={`plan-fixture-${f.kind}`}>
             <circle cx={cx} cy={cy} r={r + 6} fill="transparent" />
-            <Symbol kind={f.kind} cx={cx} cy={cy} r={r} stroke={stroke} scale={scale} />
+            <g transform={rot ? `rotate(${-rot} ${cx} ${cy})` : undefined}>
+              <Symbol kind={f.kind} cx={cx} cy={cy} r={r} stroke={stroke} scale={scale} />
+            </g>
             {sel ? <circle cx={cx} cy={cy} r={r + 4} fill="none" stroke="#b5532a" strokeWidth={1.5} strokeDasharray="3 2" /> : null}
             <title>{`${f.label ?? FIXTURE_PRESETS[f.kind].label} · ${f.mountFt}' up${circuit ? ` · circuit ${circuit.label}` : ""}`}</title>
           </g>
@@ -87,6 +108,7 @@ function Symbol({ kind, cx, cy, r, stroke, scale }: { kind: ElectricalFixture["k
     case "outlet":
       return (
         <g stroke={stroke} strokeWidth={1.5} fill={fill}>
+          <rect x={cx - r * 0.5} y={cy - r * 0.25} width={r} height={r * 0.5} fill={stroke} stroke="none" opacity={0.35} />
           <circle cx={cx} cy={cy} r={r * 0.8} />
           <line x1={cx - r * 1.2} y1={cy} x2={cx + r * 1.2} y2={cy} />
           <line x1={cx - r * 0.3} y1={cy - r * 0.35} x2={cx - r * 0.3} y2={cy + r * 0.35} />
@@ -96,6 +118,7 @@ function Symbol({ kind, cx, cy, r, stroke, scale }: { kind: ElectricalFixture["k
     case "switch":
       return (
         <g>
+          <rect x={cx - r * 0.55} y={cy - r * 0.2} width={r * 1.1} height={r * 0.4} fill={stroke} stroke="none" opacity={0.35} />
           <circle cx={cx} cy={cy} r={r * 0.8} fill={fill} stroke={stroke} strokeWidth={1.5} />
           <text x={cx} y={cy + r * 0.4} textAnchor="middle" fontSize={r * 1.2} fontWeight={600} fill={stroke} fontFamily="ui-sans-serif, system-ui">
             S

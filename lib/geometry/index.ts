@@ -8,6 +8,7 @@ import { planToWorld, eulerYX } from "./frame";
 import { derivePartitions } from "@/lib/interior/partitions";
 import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
 import { electricalGeometry } from "./electrical";
+import { drainageGeometry } from "./drainage";
 import { zoneRect } from "@/lib/model/zones";
 import type { BoxMember, Geometry, PolygonMember, Vec3 } from "./types";
 
@@ -159,6 +160,7 @@ export function deriveGeometry(model: BuildingModel, framing: FramingSet = deriv
   // ---- Interior: zone floors and partitions derived from zone edges (SPEC §5.3, §24)
   boxes.push(...interiorGeometry(model));
   boxes.push(...electricalGeometry(model));
+  boxes.push(...drainageGeometry(model));
 
   // ---- Lean-tos: roof plane, enclosure skins
   for (const lt of model.leanTos) {

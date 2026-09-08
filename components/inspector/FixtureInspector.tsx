@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useProjectStore } from "@/lib/store/useProjectStore";
-import { FIXTURE_PRESETS, PLACEABLE_FIXTURE_KINDS } from "@/lib/model/electrical";
+import { FIXTURE_PRESETS, PLACEABLE_FIXTURE_KINDS, switchedLights } from "@/lib/model/electrical";
 import { deriveElectrical, circuitOf } from "@/lib/electrical/derive";
 import type { FixtureKind } from "@/lib/model/schema";
 import { Field, inputClass, Section } from "@/components/ui/Field";
@@ -16,13 +16,15 @@ export function FixtureInspector({ id }: { id: string }) {
   const model = useProjectStore((s) => s.model)!;
   const update = useProjectStore((s) => s.updateFixture);
   const remove = useProjectStore((s) => s.removeFixture);
+  const rotate = useProjectStore((s) => s.rotateFixture);
   const e = useMemo(() => deriveElectrical(model), [model]);
   const f = model.electrical.fixtures.find((x) => x.id === id);
   if (!f) return null;
   const preset = FIXTURE_PRESETS[f.kind];
   const circuit = circuitOf(e, f.id);
   const wall = f.wallId ? model.walls.find((w) => w.id === f.wallId) : undefined;
-  const where = wall ? `${{ n: "north", s: "south", e: "east", w: "west" }[wall.side ?? "s"]} wall` : "ceiling";
+  const where = wall ? `${{ n: "north", s: "south", e: "east", w: "west" }[wall.side ?? "s"]} wall` : f.facing ? "inside wall" : "ceiling";
+  const controlled = f.kind === "switch" ? switchedLights(model, f.id) : [];
   const lights = model.electrical.fixtures.filter((x) => x.kind === "light" || x.kind === "floodlight");
   const switches = model.electrical.fixtures.filter((x) => x.kind === "switch");
   return (
@@ -52,6 +54,19 @@ export function FixtureInspector({ id }: { id: string }) {
               <FtInput value={f.mountFt} min={0} max={model.eaveHeightFt} onCommit={(v) => update(f.id, { mountFt: v })} testId="fixture-mount" />
             </Field>
           </div>
+          {f.kind === "light" ? (
+            <Field label="Runs" hint="R turns the selected light">
+              <div className="flex gap-1">
+                <select className={inputClass} value={f.rotationDeg % 180} onChange={(ev) => update(f.id, { rotationDeg: Number(ev.target.value) })} data-testid="fixture-rotation">
+                  <option value={0}>East–west</option>
+                  <option value={90}>North–south</option>
+                </select>
+                <Button className="shrink-0 px-2 py-1 text-xs" onClick={() => rotate(f.id)} data-testid="fixture-rotate">
+                  Rotate
+                </Button>
+              </div>
+            </Field>
+          ) : null}
           {f.kind === "light" || f.kind === "floodlight" ? (
             <Field label="Switched from">
               <select className={inputClass} value={f.switchId ?? ""} onChange={(ev) => update(f.id, { switchId: ev.target.value || undefined })}>
@@ -64,7 +79,24 @@ export function FixtureInspector({ id }: { id: string }) {
               </select>
             </Field>
           ) : null}
-          {f.kind === "switch" ? <p className="text-[11px] text-muted">Controls {lights.filter((l) => l.switchId === f.id).length || "the lights on its circuit"}.</p> : null}
+          {f.kind === "switch" ? (
+            <div className="flex flex-col gap-1" data-testid="switch-controls">
+              <span className="text-[12.5px] font-medium text-foreground/85">Controls</span>
+              {lights.length === 0 ? <p className="text-[11.5px] text-muted">No lights yet.</p> : null}
+              {lights.map((l) => {
+                const on = controlled.some((x) => x.id === l.id);
+                const explicit = l.switchId === f.id;
+                return (
+                  <label key={l.id} className="flex items-center gap-2 text-[12.5px]">
+                    <input type="checkbox" checked={on} onChange={(ev) => update(l.id, { switchId: ev.target.checked ? f.id : undefined })} />
+                    <span className="flex-1 truncate">{l.label ?? FIXTURE_PRESETS[l.kind].short}</span>
+                    {on && !explicit ? <span className="text-[10.5px] text-muted">nearest switch</span> : null}
+                  </label>
+                );
+              })}
+              <p className="text-[11px] leading-snug text-muted">Unassigned lights follow their nearest switch. The dotted lines on the plan show the switch legs; wire them 3-way where an aisle has a switch at both ends.</p>
+            </div>
+          ) : null}
         </Section>
         {circuit ? (
           <Section title={`Circuit ${circuit.label}`}>

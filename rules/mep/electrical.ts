@@ -187,11 +187,11 @@ export const deviceAnimalReach: Rule = {
   id: "mep.electrical.animalReach",
   title: "Devices out of animal reach",
   source: "NEC:547.5 physical protection (2023: 547.26)",
-  rationale: "Receptacles and switches belong on the aisle side of the stall front at 48\", never inside the pen where they get chewed, kicked and soaked. Waterers inside the pen are hard-wired in conduit.",
+  rationale: "Receptacles and switches belong on the aisle side of the stall front at 48\", never inside the pen — on its outside wall or in the open — where they get chewed, kicked and soaked. Waterers inside the pen are hard-wired in conduit.",
   applies: (m) => m.electrical.fixtures.some((f) => f.kind === "outlet" || f.kind === "switch"),
   evaluate: (m) =>
     m.electrical.fixtures
-      .filter((f) => (f.kind === "outlet" || f.kind === "switch") && !f.wallId)
+      .filter((f) => (f.kind === "outlet" || f.kind === "switch") && !(f.facing && !f.wallId)) // partition-mounted devices sit on the stall front's aisle side
       .flatMap((f) => {
         const pen = m.zones.find((z) => (z.type === "pen" || z.type === "kidding") && fixturesInZone(m, z).some((x) => x.id === f.id));
         if (!pen) return [];

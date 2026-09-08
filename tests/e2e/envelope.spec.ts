@@ -40,10 +40,8 @@ test("M1 envelope: add openings via context menu, edit, framing view, undo", asy
   await page.locator('[data-testid="plan-svg"] rect[fill="#3a3835"]').first().click();
   await expect(page.getByTestId("member-inspector")).toContainText("framing.postFrame");
 
-  // Cutaway toggle in the View menu.
-  await page.getByTestId("view-menu").click();
-  await page.getByTestId("cut-toggle").check();
-  await page.keyboard.press("Escape");
+  // Roof-off view from the View menu.
+  await pickView(page, "view-noroof");
   await page.screenshot({ path: "test-results/envelope.png" });
 
   // Undo the window delete and add via keyboard.

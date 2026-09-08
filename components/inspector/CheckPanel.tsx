@@ -40,6 +40,12 @@ export function runFix(f: Finding) {
       return s.updateInteriorDoor(String(args.id), { widthFt: Number(args.widthFt) });
     case "setAutoDoor":
       return s.setAutoDoor(String(args.id), true);
+    case "autoDrainWashBays":
+      return s.autoDrainWashBays();
+    case "autoOutlet":
+      return s.autoOutlet();
+    case "setOutletKind":
+      return s.setOutlet({ kind: args.kind as "dryWell" });
     case "nudgeOpeningClear": {
       const id = String(args.id);
       const clear = Number(args.clearanceFt ?? 1);

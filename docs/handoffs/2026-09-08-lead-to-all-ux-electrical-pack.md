@@ -10,6 +10,13 @@
 - **Renderer:** infinite fogged ground plane; real floor-mat thickness and a 0.5' near plane end the z-fighting between stall floors and the slab.
 - **Tests:** 119 vitest (electrical, doors, wizard, estimate, cut list/hardware/sequence added), 7 Playwright specs rewritten for the new shell (+ `electrical.spec.ts`, `pack.spec.ts`).
 
+## Same-day follow-ups (owner feedback)
+- **Menus opaque; plan zoom / pan / fit; draggable plan–3D split** (commit e4405d7).
+- **Door tool fix:** stall and aisle tiles swallowed the click, so interior doors only landed on sides facing bare floor; placement tools now bubble to the plan (and the Layout door picker also lists outside doors, which arm the exterior tool).
+- **Electrical:** lights rotate (R, inspector, menu); wall devices lock onto the nearest exterior wall *or* partition (no more floating switches); switch legs — which lights a switch controls (assigned, else nearest switch) — drawn as dotted lines and editable from the switch panel.
+- **Views:** the cutaway preset and cut slider are gone (owner: "I will never use that"). Presets are Outside (everything on), Roof off, Framing (no roof) and Inside. Step defaults: Layout → Framing, Building → Outside, Outside and Electrical → Roof off.
+- **Drainage (ADR-0016):** floor and trench drains, an outlet, derived under-slab pipe with inverts, slopes, cleanouts and a daylight check; rules; Building-step tools; P1 sheet for the concrete crew; cost lines; build-sequence step.
+
 ## Untested / known gaps
 - Real WebGPU backend still cannot run headless; the WebGL2 path of the same renderer is exercised.
 - The carrier notch, lean-to rafter tails/HAP and end-wall X-bracing are in the cut list and notes but not yet in the 3D framing (research appendix items 1, 3, 6).

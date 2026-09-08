@@ -13,6 +13,7 @@ export type RuleSource =
   | "Industry"
   | `Species:${string}`
   | `NEC:${string}`
+  | `IPC:${string}`
   | `ASABE:${string}`
   | `MWPS:${string}`
   | "User";

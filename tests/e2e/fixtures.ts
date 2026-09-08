@@ -35,7 +35,7 @@ export async function goStep(page: Page, step: string) {
 }
 
 /** Open the View menu and pick a 3D preset by its testid. */
-export async function pickView(page: Page, id: "view-outside" | "view-inside" | "view-framing" | "view-cutaway") {
+export async function pickView(page: Page, id: "view-outside" | "view-inside" | "view-framing" | "view-noroof") {
   await page.getByTestId("view-menu").click();
   await page.getByTestId(id).click();
   await page.keyboard.press("Escape");

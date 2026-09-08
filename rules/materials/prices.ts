@@ -14,7 +14,7 @@ export interface PriceItem {
   source: "placeholder";
 }
 
-export type PriceCategory = "lumber" | "posts" | "trusses" | "roofSteel" | "siding" | "trim" | "concrete" | "hardware" | "doors" | "windows" | "interior" | "electrical";
+export type PriceCategory = "lumber" | "posts" | "trusses" | "roofSteel" | "siding" | "trim" | "concrete" | "hardware" | "doors" | "windows" | "interior" | "electrical" | "plumbing";
 
 export const PRICE_CATEGORY_LABEL: Record<PriceCategory, string> = {
   lumber: "Framing lumber",
@@ -29,6 +29,7 @@ export const PRICE_CATEGORY_LABEL: Record<PriceCategory, string> = {
   windows: "Windows",
   interior: "Stall fronts & partitions",
   electrical: "Electrical",
+  plumbing: "Drains & pipe",
 };
 
 export const PRICES: PriceItem[] = [
@@ -130,6 +131,19 @@ export const PRICES: PriceItem[] = [
   { sku: "elec.feeder100.ft", description: "100 A feeder: 3 AWG Cu (or 1 AWG Al) in 1½\" PVC, buried 18\"", unit: "lf", unitCost: 11, category: "electrical", source: "placeholder" },
   { sku: "elec.feeder200.ft", description: "200 A feeder: 3/0 Cu (or 4/0 Al) in 2\" PVC, buried 18\"", unit: "lf", unitCost: 22, category: "electrical", source: "placeholder" },
   { sku: "elec.circuitMisc", description: "Straps, connectors, wire nuts, labels per circuit", unit: "each", unitCost: 18, category: "electrical", source: "placeholder" },
+  // Floor drainage (ADR-0016)
+  { sku: "drain.floor4", description: "4\" floor drain with deep-seal trap, sediment bucket and cast grate", unit: "each", unitCost: 95, category: "plumbing", source: "placeholder" },
+  { sku: "drain.trench.lf", description: "Trench drain channel with hoof-rated grate", unit: "lf", unitCost: 52, category: "plumbing", source: "placeholder" },
+  { sku: "drain.catchBasin", description: "Catch basin / trap at a trench drain outlet", unit: "each", unitCost: 120, category: "plumbing", source: "placeholder" },
+  { sku: "drain.trapPrimer", description: "Trap primer valve", unit: "each", unitCost: 45, category: "plumbing", source: "placeholder" },
+  { sku: "pipe.pvc3.ft", description: "3\" PVC drain pipe", unit: "lf", unitCost: 1.9, category: "plumbing", source: "placeholder" },
+  { sku: "pipe.pvc4.ft", description: "4\" PVC drain pipe", unit: "lf", unitCost: 2.6, category: "plumbing", source: "placeholder" },
+  { sku: "pipe.pvc6.ft", description: "6\" PVC drain pipe", unit: "lf", unitCost: 4.4, category: "plumbing", source: "placeholder" },
+  { sku: "pipe.fitting", description: "PVC drain fitting (elbow, wye, coupling)", unit: "each", unitCost: 11, category: "plumbing", source: "placeholder" },
+  { sku: "pipe.cleanout", description: "Cleanout with cap and floor cover", unit: "each", unitCost: 32, category: "plumbing", source: "placeholder" },
+  { sku: "pipe.bedding.ft", description: "Gravel pipe bedding, 4\" under and cover", unit: "lf", unitCost: 1.1, category: "plumbing", source: "placeholder" },
+  { sku: "drain.daylightEnd", description: "Daylight end: rodent screen, flap and splash pad", unit: "each", unitCost: 40, category: "plumbing", source: "placeholder" },
+  { sku: "drain.dryWell", description: "Dry well: pit, 4 cu yd of stone, barrel and fabric", unit: "each", unitCost: 420, category: "plumbing", source: "placeholder" },
 ];
 
 export const PRICE_BY_SKU: Record<string, PriceItem> = Object.fromEntries(PRICES.map((p) => [p.sku, p]));

@@ -94,7 +94,7 @@ export function TopBar() {
             <MenuDivider />
             <div className="px-2.5 py-1.5 text-[11px] leading-relaxed text-muted">
               <div className="mb-1 font-semibold text-foreground/80">Keyboard</div>
-              Ctrl+Z undo · Ctrl+Shift+Z redo · Delete removes · arrows nudge · F fit · X cutaway · Esc backs out · Ctrl+1…7 steps
+              Ctrl+Z undo · Ctrl+Shift+Z redo · Delete removes · arrows nudge · F fit · R turns a light · Esc backs out · Ctrl+1…7 steps
             </div>
           </>
         )}

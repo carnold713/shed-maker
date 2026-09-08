@@ -1,32 +1,26 @@
 "use client";
 
 import { ALL_LAYERS, LAYER_LABEL, PRESET_LABEL, useViewStore, type ViewPreset } from "@/lib/store/useViewStore";
-import { useDerived } from "@/lib/store/useDerived";
-import { formatFtIn } from "@/lib/units";
 import { Popover, MenuRow, MenuLabel, MenuDivider } from "@/components/ui/Popover";
 import { Icon } from "@/components/ui/Icon";
 
 const PRESETS: { id: ViewPreset; hint: string; testId: string }[] = [
-  { id: "exterior", hint: "The finished barn from outside", testId: "view-outside" },
+  { id: "exterior", hint: "The finished barn from outside, roof on", testId: "view-outside" },
+  { id: "noRoof", hint: "The finished barn with the roof off, so you can see inside", testId: "view-noroof" },
+  { id: "framing", hint: "Posts, girts and partitions only, no roof", testId: "view-framing" },
   { id: "interior", hint: "Stand in the aisle", testId: "view-inside" },
-  { id: "framing", hint: "Posts, girts, trusses and purlins only", testId: "view-framing" },
-  { id: "dollhouse", hint: "Cut the walls at 4' to see inside", testId: "view-cutaway" },
 ];
 
-/** View ▾ (UX audit §2.9): one place for the 3D preset, cutaway height, white model, camera and layers. */
+/** View ▾ (UX audit §2.9): one place for the 3D preset, white model, camera and layers. */
 export function ViewMenu() {
   const preset = useViewStore((s) => s.preset);
   const setPreset = useViewStore((s) => s.setPreset);
-  const cut = useViewStore((s) => s.cutHeightFt);
-  const setCut = useViewStore((s) => s.setCutHeight);
   const renderMode = useViewStore((s) => s.renderMode);
   const setRenderMode = useViewStore((s) => s.setRenderMode);
   const iso = useViewStore((s) => s.isometric);
   const setIso = useViewStore((s) => s.setIsometric);
   const visible = useViewStore((s) => s.visibleLayers);
   const toggleLayer = useViewStore((s) => s.toggleLayer);
-  const { geometry } = useDerived();
-  const ridge = geometry?.ridgeHeightFt ?? 16;
 
   return (
     <Popover
@@ -44,13 +38,6 @@ export function ViewMenu() {
           {PRESET_LABEL[p.id]}
         </MenuRow>
       ))}
-      <div className="flex items-center gap-2 whitespace-nowrap px-2.5 py-1.5 text-xs text-muted">
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" checked={cut !== null} onChange={(e) => setCut(e.target.checked ? 4 : null)} data-testid="cut-toggle" /> Cut at
-        </label>
-        <input type="range" min={0.5} max={Math.ceil(ridge)} step={0.25} value={cut ?? 4} disabled={cut === null} onChange={(e) => setCut(Number(e.target.value))} className="w-24" aria-label="Cut height" />
-        <span className="w-12 font-mono text-foreground">{formatFtIn(cut ?? 4)}</span>
-      </div>
       <MenuDivider />
       <MenuRow active={renderMode === "white"} onClick={() => setRenderMode(renderMode === "white" ? "realistic" : "white")} hint="Plain white model instead of your colours">
         Plain white

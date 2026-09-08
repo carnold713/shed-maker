@@ -14,7 +14,7 @@ Persona files live in `/agents`. Each defines scope, owned paths, standards, del
 | Drawing / Export | `agents/drawings.md` | active (pack shipped 2026-09-08) | `/components/pack`, `/lib/bom/cutlist.ts`, `/lib/bom/sequence.ts` |
 | QA / Test | `agents/qa.md` | active | `/tests`, test configs |
 | Animal husbandry | `agents/animals.md` | pending (M3) | `/rules/animals` |
-| Electrical / Plumbing | `agents/mep.md` | plumbing pending (M7) | `/rules/mep` (plumbing) |
+| Electrical / Plumbing | `agents/mep.md` | drainage shipped 2026-09-08 (ADR-0016); supply plumbing pending (M7) | `/rules/mep/drainage.ts`, `/lib/plumbing`, `/lib/model/drainage.ts`, `/lib/geometry/drainage.ts` |
 | Electrician | `agents/electrician.md` | active (hired 2026-09-08) | `/rules/mep/electrical.ts`, `/lib/electrical`, `/lib/model/electrical.ts`, `/lib/geometry/electrical.ts` |
 
 ## Hires
