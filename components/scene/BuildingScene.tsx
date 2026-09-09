@@ -7,11 +7,13 @@ import type { BoxMember, Geometry, PolygonMember } from "@/lib/geometry";
 import type { MaterialChoices } from "@/lib/model/schema";
 import { useProjectStore } from "@/lib/store/useProjectStore";
 import { useViewStore, type ContextTarget } from "@/lib/store/useViewStore";
-import { InstancedBoxes } from "./InstancedBoxes";
+import { MergedBoxes } from "./MergedBoxes";
+import { getTextureSet, textureFor, uvRuleFor, type TextureSet } from "./textures";
+import type { UvRule } from "./boxUv";
 
 const SELECT = "#b5532a";
 
-type Group = { key: string; boxes: BoxMember[]; color: string; roughness: number; metalness: number; transparent?: boolean; opacity?: number; emissive?: string; emissiveIntensity?: number };
+type Group = { key: string; boxes: BoxMember[]; color: string; roughness: number; metalness: number; transparent?: boolean; opacity?: number; emissive?: string; emissiveIntensity?: number; textures?: TextureSet | null; uvRule?: UvRule };
 
 /** Selection id for a box: openings select the opening, skins select the footprint, framing selects the member. */
 function selectionIdFor(b: BoxMember): string {
@@ -53,8 +55,8 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
   const groups = useMemo<Group[]>(() => {
     const white = renderMode === "white";
     const palette: Record<BoxMember["material"], Omit<Group, "key" | "boxes">> = {
-      siding: { color: white ? "#efefec" : materials.sidingColor, roughness: 0.75, metalness: 0.02 },
-      roofing: { color: white ? "#e2e2df" : materials.roofColor, roughness: 0.7, metalness: 0.04 },
+      siding: { color: white ? "#efefec" : materials.sidingColor, roughness: 0.75, metalness: white ? 0.02 : 0.35 },
+      roofing: { color: white ? "#e2e2df" : materials.roofColor, roughness: 0.7, metalness: white ? 0.04 : 0.4 },
       concrete: { color: white ? "#d9d8d4" : "#d2cfc7", roughness: 0.95, metalness: 0 },
       wood: { color: white ? "#e6e3dc" : "#dcc39c", roughness: 0.9, metalness: 0 },
       ptWood: { color: white ? "#dedbd4" : "#c9b48c", roughness: 0.9, metalness: 0 },
@@ -82,7 +84,11 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
       const key = `${b.material}`;
       let g = by.get(key);
       if (!g) {
-        g = { key, boxes: [], ...palette[b.material] };
+        // Realistic mode: PBR maps in feet; a luminance albedo keeps the model's colour on painted steel and trim.
+        const texKind = white ? null : textureFor(b.material, materials.wainscot.kind);
+        const tex = texKind ? getTextureSet(texKind) : null;
+        const base = palette[b.material];
+        g = { key, boxes: [], ...base, textures: tex, uvRule: uvRuleFor(b.material, tex), color: tex && !tex.tinted ? "#ffffff" : base.color };
         by.set(key, g);
       }
       g.boxes.push(b);
@@ -106,8 +112,10 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
   return (
     <group>
       {groups.map((g) => (
-        <InstancedBoxes
+        <MergedBoxes
           key={g.key}
+          textures={g.textures}
+          uvRule={g.uvRule}
           boxes={g.boxes}
           color={g.color}
           roughness={g.roughness}
@@ -131,6 +139,7 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
             key={p.id}
             member={p}
             color={selection === "footprint" ? SELECT : renderMode === "white" ? "#e8e8e6" : materials.sidingColor}
+            textures={renderMode === "white" ? null : getTextureSet("steelRibs")}
             clippingPlanes={clippingPlanes}
             onClick={() => select("footprint")}
             onContextMenu={(e) => {
@@ -143,16 +152,30 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
   );
 }
 
-function Polygon({ member, color, clippingPlanes, onClick, onContextMenu }: { member: PolygonMember; color: string; clippingPlanes: THREE.Plane[]; onClick: () => void; onContextMenu: (e: ThreeEvent<MouseEvent>) => void }) {
+function Polygon({ member, color, textures, clippingPlanes, onClick, onContextMenu }: { member: PolygonMember; color: string; textures: TextureSet | null; clippingPlanes: THREE.Plane[]; onClick: () => void; onContextMenu: (e: ThreeEvent<MouseEvent>) => void }) {
   const geom = useMemo(() => {
     const g = new THREE.BufferGeometry();
     const verts = member.vertices;
     const positions: number[] = [];
-    for (let i = 1; i < verts.length - 1; i++) positions.push(...verts[0], ...verts[i], ...verts[i + 1]);
+    const uvs: number[] = [];
+    // Gable ends stand in a vertical plane: u runs along the wall (x or z), v is height, so the ribs stand vertical.
+    const alongX = Math.abs(verts[1][0] - verts[0][0]) >= Math.abs(verts[1][2] - verts[0][2]);
+    const push = (v: [number, number, number]) => {
+      positions.push(...v);
+      uvs.push(alongX ? v[0] : v[2], v[1]);
+    };
+    for (let i = 1; i < verts.length - 1; i++) {
+      push(verts[0]);
+      push(verts[i]);
+      push(verts[i + 1]);
+    }
     g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
     g.computeVertexNormals();
     return g;
   }, [member]);
+  const rep = textures ? 1 / textures.tileFt : 1;
+  if (textures) for (const t of [textures.map, textures.normalMap, textures.roughnessMap]) t.repeat.set(rep, rep);
   return (
     <mesh
       geometry={geom}
@@ -167,7 +190,7 @@ function Polygon({ member, color, clippingPlanes, onClick, onContextMenu }: { me
         onContextMenu(e);
       }}
     >
-      <meshStandardMaterial color={color} side={THREE.DoubleSide} roughness={0.6} metalness={0.05} clippingPlanes={clippingPlanes} clipShadows />
+      <meshStandardMaterial color={color} side={THREE.DoubleSide} roughness={textures ? 1 : 0.6} metalness={textures ? 0.35 : 0.05} map={textures?.map ?? null} normalMap={textures?.normalMap ?? null} normalScale={textures ? new THREE.Vector2(textures.normalScale, textures.normalScale) : undefined} roughnessMap={textures?.roughnessMap ?? null} clippingPlanes={clippingPlanes} clipShadows />
     </mesh>
   );
 }
