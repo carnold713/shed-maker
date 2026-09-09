@@ -10,6 +10,7 @@ import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
 import { electricalGeometry } from "./electrical";
 import { drainageGeometry } from "./drainage";
 import { siteGeometry } from "./site";
+import { detailsGeometry } from "./details";
 import { zoneRect } from "@/lib/model/zones";
 import type { BoxMember, Geometry, PolygonMember, Vec3 } from "./types";
 
@@ -163,6 +164,7 @@ export function deriveGeometry(model: BuildingModel, framing: FramingSet = deriv
   boxes.push(...electricalGeometry(model));
   boxes.push(...drainageGeometry(model));
   boxes.push(...siteGeometry(model));
+  boxes.push(...detailsGeometry(model));
 
   // ---- Lean-tos: roof plane, enclosure skins
   for (const lt of model.leanTos) {

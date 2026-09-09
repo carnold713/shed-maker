@@ -42,6 +42,7 @@ export function createDefaultModel(opts: { name?: string; wFt?: number; dFt?: nu
       structure: "truss",
       covering: "steelPanel",
       vents: { ridge: true, gable: false, soffit: false, cupola: false },
+      cupola: { enabled: false, sizeIn: 36, count: 1, weathervane: true, style: "louvered" },
     },
     leanTos: [],
     runs: [],
@@ -56,8 +57,9 @@ export function createDefaultModel(opts: { name?: string; wFt?: number; dFt?: nu
     materials: {
       sidingColor: "#efece5",
       roofColor: "#cfc8bd",
+      trimStyle: "none",
       trimColor: "#ffffff",
-      wainscot: { enabled: false, heightFt: 3, color: "#5b5f63" },
+      wainscot: { enabled: false, kind: "steel", heightFt: 3, color: "#5b5f63" },
     },
     electrical: { service: { amps: 100, feederLengthFt: 100, feedFrom: "housePanel" }, wiring: "pvcConduit", fixtures: [] },
     drainage: { drains: [], pipeDiaIn: 4, slopeInPerFt: 0.25, siteFallIn: 0 },

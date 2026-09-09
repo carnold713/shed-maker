@@ -14,6 +14,8 @@ import { interiorDoors } from "@/lib/interior/partitions";
 import { INTERIOR_DOOR_PRESETS } from "@/lib/model/interiorDoors";
 import { deriveFencing } from "@/lib/site/fencing";
 import { FENCE_PRESETS } from "@/lib/model/runs";
+import { CUPOLA_SIZES_IN, WAINSCOT_LABEL } from "@/lib/model/looks";
+import { formatFtIn } from "@/lib/units";
 import { deriveElectrical } from "@/lib/electrical/derive";
 import { FIXTURE_PRESETS } from "@/lib/model/electrical";
 import { deriveDrainage } from "@/lib/plumbing/drainage";
@@ -211,6 +213,47 @@ export function estimateMaterials(model: BuildingModel, framing: FramingSet, geo
     add("plumbing", "pipe.cleanout", "Cleanouts", dd.cleanouts.length, "each");
     if (dd.outlet?.kind === "daylight") add("plumbing", "drain.daylightEnd", "Daylight outlet end", 1, "each");
     if (dd.outlet?.kind === "dryWell") add("plumbing", "drain.dryWell", "Dry well", 1, "each");
+  }
+
+  // ---- Looks (ADR-0018): cupola, weathervane, awnings, trim boards, wainscot
+  const cup = model.roof.cupola;
+  if (cup.enabled) {
+    const size = CUPOLA_SIZES_IN.reduce((b, s) => (Math.abs(s - cup.sizeIn) < Math.abs(b - cup.sizeIn) ? s : b), CUPOLA_SIZES_IN[0]);
+    add("trim", `cupola.${size}`, `Cupola, ${size}" base, ${cup.style}`, cup.count, "each");
+    if (cup.style === "windowed") add("trim", "cupola.windowed", "Windowed cupola upcharge", cup.count, "each");
+    add("trim", "cupola.saddle", "Cupola saddle cut and flashing", cup.count, "each");
+    if (cup.weathervane) add("trim", "weathervane", "Weathervane with roof mount", cup.count, "each");
+  }
+  const awnings = model.openings.filter((o) => o.awning);
+  if (awnings.length) {
+    add("trim", "awning.lf", `Awning roofs over ${awnings.length} door${awnings.length > 1 ? "s" : ""} (${awnings.map((o) => `${Math.round(o.widthFt + 2)}' × ${o.awning!.depthFt}'`).join(", ")})`, awnings.reduce((s, o) => s + o.widthFt + 2, 0), "lf");
+    const timber = awnings.filter((o) => o.awning!.brackets === "timber").length;
+    if (timber) add("trim", "awning.bracket.timber", "Timber knee brackets (2 per awning)", timber * 2, "each");
+    if (awnings.length - timber) add("trim", "awning.bracket.steel", "Steel awning brackets (2 per awning)", (awnings.length - timber) * 2, "each");
+  }
+  if (model.materials.trimStyle !== "none") {
+    let lf4 = 0;
+    let lf6 = 0;
+    let cap = 0;
+    for (const o of model.openings) {
+      const legs = 2 * (o.heightFt + 0.5);
+      const across = o.widthFt + 1;
+      if (model.materials.trimStyle === "flat") lf4 += legs + across + (o.type === "window" ? across : 0);
+      else if (model.materials.trimStyle === "wide") lf6 += legs + across + (o.type === "window" ? across : 0);
+      else {
+        lf4 += legs + (o.type === "window" ? across * 2 : 0);
+        lf6 += across;
+        cap += across + 0.5;
+      }
+    }
+    if (lf4) add("trim", "trim.1x4.lf", `1×4 trim boards around ${model.openings.length} openings (+10%)`, lf4 * 1.1, "lf");
+    if (lf6) add("trim", "trim.1x6.lf", "1×6 trim boards (heads and wide legs) (+10%)", lf6 * 1.1, "lf");
+    if (cap) add("trim", "trim.cap.lf", "Drip caps over the heads", cap, "lf");
+  }
+  if (model.materials.wainscot.enabled) {
+    let sqft = 0;
+    for (const b of geometry.boxes) if (b.kind === "wainscot" && b.material !== "trim") sqft += Math.max(b.size[0], b.size[2]) * b.size[1];
+    add("siding", `wainscot.${model.materials.wainscot.kind}.sqft`, `${WAINSCOT_LABEL[model.materials.wainscot.kind]} wainscot, ${formatFtIn(model.materials.wainscot.heightFt)} high (+10%)`, sqft * 1.1, "sqft");
   }
 
   // ---- Runs and fencing (materials only; the fence contractor's labour is separate)

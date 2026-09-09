@@ -46,6 +46,10 @@ export function runFix(f: Finding) {
       return s.autoOutlet();
     case "setOutletKind":
       return s.setOutlet({ kind: args.kind as "dryWell" });
+    case "setCupola":
+      return s.setCupola({ sizeIn: Number(args.sizeIn) });
+    case "lightsOverDoors":
+      return s.lightsOverDoors();
     case "fitRunToHead":
       return s.fitRunToHead(String(args.id));
     case "updateRun":

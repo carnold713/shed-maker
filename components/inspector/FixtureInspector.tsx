@@ -10,7 +10,7 @@ import { FtInput } from "@/components/ui/FtInput";
 import { Button } from "@/components/ui/Button";
 import { DockHeader, DockBody } from "@/components/editor/Dock";
 
-const ICON: Record<FixtureKind, string> = { light: "light", floodlight: "light", outlet: "outlet", switch: "switch", panel: "panel", fan: "fan", waterer: "waterer", heater: "heater" };
+const ICON: Record<FixtureKind, string> = { light: "light", floodlight: "light", gooseneck: "light", lantern: "light", outlet: "outlet", switch: "switch", panel: "panel", fan: "fan", waterer: "waterer", heater: "heater" };
 
 export function FixtureInspector({ id }: { id: string }) {
   const model = useProjectStore((s) => s.model)!;

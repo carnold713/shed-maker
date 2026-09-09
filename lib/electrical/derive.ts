@@ -235,6 +235,8 @@ function circuitKindOf(kind: FixtureKind): CircuitKind | null {
   switch (kind) {
     case "light":
     case "floodlight":
+    case "gooseneck":
+    case "lantern":
       return "lighting";
     case "outlet":
       return "receptacle";

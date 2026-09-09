@@ -10,6 +10,7 @@ import { interiorDoorWidth, zoneHasDoor } from "./design/interiorDoors";
 import { ELECTRICAL_RULES } from "./mep/electrical";
 import { DRAINAGE_RULES } from "./mep/drainage";
 import { RUN_RULES } from "./site/runs";
+import { LOOKS_RULES } from "./design/looks";
 
 export * from "./types";
 
@@ -35,6 +36,7 @@ export const RULES: Rule[] = [
   ...ELECTRICAL_RULES,
   ...DRAINAGE_RULES,
   ...RUN_RULES,
+  ...LOOKS_RULES,
   footprintModule,
 ];
 

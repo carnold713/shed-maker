@@ -39,6 +39,15 @@ function fixtureBox(model: BuildingModel, f: ElectricalFixture, W: number, D: nu
       const out = wall ? { x: 2 * f.x - inside.x, y: 2 * f.y - inside.y } : f;
       return { ...base, material: "fixture", center: planToWorld(out.x, out.y, f.mountFt), size: [0.7, 0.45, 0.35] };
     }
+    case "gooseneck": {
+      // Arm and shade on the outside face; the shade is the visible bit.
+      const out = wall ? { x: 2 * f.x - inside.x, y: 2 * f.y - inside.y } : f;
+      return { ...base, material: "device", center: planToWorld(out.x, out.y, f.mountFt - 0.35), size: [1.1, 0.4, 1.1] };
+    }
+    case "lantern": {
+      const out = wall ? { x: 2 * f.x - inside.x, y: 2 * f.y - inside.y } : f;
+      return { ...base, material: "fixture", center: planToWorld(out.x, out.y, f.mountFt), size: [0.5, 0.9, 0.35] };
+    }
     case "outlet":
     case "switch":
       return { ...base, material: "device", center: planToWorld(inside.x, inside.y, f.mountFt), size: [0.4, 0.45, 0.2] };

@@ -73,6 +73,8 @@ export function BuildingScene({ geometry, materials, clippingPlanes }: { geometr
       grass: { color: white ? "#e3e4de" : "#8fae6a", roughness: 1, metalness: 0 },
       mesh: { color: white ? "#b5b3ae" : "#6e6a62", roughness: 0.6, metalness: 0.4, transparent: true, opacity: 0.4 },
       steel: { color: white ? "#c9c8c4" : "#8d9096", roughness: 0.45, metalness: 0.6 },
+      stone: { color: white ? "#d6d3cc" : "#b3a48c", roughness: 0.95, metalness: 0 },
+      wainscot: { color: white ? "#d0cec8" : materials.wainscot.color, roughness: 0.8, metalness: materials.wainscot.kind === "steel" ? 0.05 : 0 },
     };
     const by = new Map<string, Group>();
     for (const b of geometry.boxes) {

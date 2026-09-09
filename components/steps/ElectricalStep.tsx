@@ -12,7 +12,7 @@ import { Field, inputClass, Section } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { ToolRow, ToolButton, ToolSelect, EmptyState, ItemList } from "./ToolRow";
 
-const ICON: Record<FixtureKind, string> = { light: "light", floodlight: "light", outlet: "outlet", switch: "switch", panel: "panel", fan: "fan", waterer: "waterer", heater: "heater" };
+const ICON: Record<FixtureKind, string> = { light: "light", floodlight: "light", gooseneck: "light", lantern: "light", outlet: "outlet", switch: "switch", panel: "panel", fan: "fan", waterer: "waterer", heater: "heater" };
 
 /** Electrical step (ADR-0013): place lights, outlets and the panel; the tool works out circuits, loads and wire. */
 export function ElectricalStep() {

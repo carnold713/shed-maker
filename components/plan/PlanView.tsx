@@ -1245,6 +1245,9 @@ function OpeningSymbol({
     <g className="cursor-grab" onPointerDown={onPointerDown} onContextMenu={onContextMenu} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)} data-testid={`plan-opening-${o.type}`}>
       {/* hit area across the opening */}
       <polygon points={hitBand(w, f, u0, u1, Math.max(16, wallT * scale * 2) / scale, px, py)} fill="transparent" />
+      {o.awning ? (
+        <polygon points={[P(u0 - 1, 0.02), P(u1 + 1, 0.02), P(u1 + 1, o.awning.depthFt), P(u0 - 1, o.awning.depthFt)].map((q) => `${q.x},${q.y}`).join(" ")} fill="#d9d6cf" fillOpacity={0.45} stroke={color} strokeWidth={0.9} strokeDasharray="3 2" pointerEvents="none" data-testid="plan-awning" />
+      ) : null}
       {isWindow ? (
         <g stroke={color} strokeWidth={1.5}>
           <line x1={P(u0, 0).x} y1={P(u0, 0).y} x2={P(u1, 0).x} y2={P(u1, 0).y} />

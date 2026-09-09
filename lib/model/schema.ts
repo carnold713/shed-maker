@@ -159,6 +159,15 @@ export const OpeningType = z.enum([
 ]);
 export type OpeningType = z.infer<typeof OpeningType>;
 
+/** A small bracketed roof over a door (ADR-0018). */
+export const Awning = z.object({
+  kind: z.enum(["shed", "gable"]).default("shed"),
+  /** Projection from the wall, feet. */
+  depthFt: z.number().min(1.5).max(6).default(3),
+  brackets: z.enum(["timber", "steel"]).default("timber"),
+});
+export type Awning = z.infer<typeof Awning>;
+
 export const Opening = z.object({
   id: Id,
   wallId: Id,
@@ -177,6 +186,8 @@ export const Opening = z.object({
   zoneId: Id.optional(),
   /** Style within the type: man door "solid"|"halfLight"; window "slider"|"singleHung"|"fixed"|"awning"|"hopper"|"transom". */
   variant: z.string().optional(),
+  /** Bracketed awning roof over the opening. */
+  awning: Awning.optional(),
 });
 export type Opening = z.infer<typeof Opening>;
 
@@ -201,8 +212,20 @@ export const Roof = z.object({
       cupola: z.boolean().default(false),
     })
     .default({ ridge: true, gable: false, soffit: false, cupola: false }),
+  /** Cupola(s) on the ridge, with a weathervane (ADR-0018). */
+  cupola: z
+    .object({
+      enabled: z.boolean().default(false),
+      /** Base width, inches: 24–48. Rule of thumb 1¼" per foot of ridge. */
+      sizeIn: z.number().min(18).max(60).default(36),
+      count: z.number().int().min(1).max(3).default(1),
+      weathervane: z.boolean().default(true),
+      style: z.enum(["louvered", "windowed"]).default("louvered"),
+    })
+    .prefault({}),
 });
 export type Roof = z.infer<typeof Roof>;
+
 
 export const LeanTo = z.object({
   id: Id,
@@ -331,12 +354,22 @@ export const Fixture = z.object({
 });
 export type Fixture = z.infer<typeof Fixture>;
 
+export const TrimStyle = z.enum(["none", "flat", "wide", "craftsman"]);
+export type TrimStyle = z.infer<typeof TrimStyle>;
+
 export const MaterialChoices = z.object({
   sidingColor: z.string().default("#8b8f94"),
   roofColor: z.string().default("#4a4f55"),
   trimColor: z.string().default("#f4f4f2"),
+  /** Boards around doors and windows (ADR-0018): none (steel J-trim only), flat 1×4, wide 1×6, craftsman (1×4 legs, 1×6 head with a cap, sill and apron). */
+  trimStyle: TrimStyle.default("none"),
   wainscot: z
-    .object({ enabled: z.boolean().default(false), heightFt: z.number().positive().default(3), color: z.string().default("#5b5f63") })
+    .object({
+      enabled: z.boolean().default(false),
+      kind: z.enum(["steel", "stone", "board"]).default("steel"),
+      heightFt: z.number().positive().default(3),
+      color: z.string().default("#5b5f63"),
+    })
     .prefault({}),
 });
 export type MaterialChoices = z.infer<typeof MaterialChoices>;
@@ -354,7 +387,7 @@ export type Override = z.infer<typeof Override>;
 // ---- Electrical (SPEC §27, ADR-0013): fixtures are placed; circuits, loads,
 // wire sizes and routes are derived in lib/electrical.
 
-export const FixtureKind = z.enum(["light", "floodlight", "outlet", "switch", "panel", "fan", "waterer", "heater"]);
+export const FixtureKind = z.enum(["light", "floodlight", "gooseneck", "lantern", "outlet", "switch", "panel", "fan", "waterer", "heater"]);
 export type FixtureKind = z.infer<typeof FixtureKind>;
 
 export const ElectricalFixture = z.object({

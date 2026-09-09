@@ -84,6 +84,16 @@ function Symbol({ kind, cx, cy, r, stroke, scale }: { kind: ElectricalFixture["k
         </g>
       );
     }
+    case "gooseneck":
+    case "lantern":
+      return (
+        <g stroke={stroke} strokeWidth={1.5} fill={fill}>
+          <circle cx={cx} cy={cy} r={r * 0.75} />
+          <line x1={cx} y1={cy - r * 0.75} x2={cx} y2={cy - r * 1.5} />
+          <path d={`M ${cx - r * 0.7} ${cy - r * 1.5} h ${r * 1.4}`} />
+          {kind === "lantern" ? <rect x={cx - r * 0.3} y={cy - r * 0.3} width={r * 0.6} height={r * 0.6} fill={stroke} stroke="none" opacity={0.6} /> : null}
+        </g>
+      );
     case "floodlight":
       return (
         <g stroke={stroke} strokeWidth={1.5} fill={fill}>

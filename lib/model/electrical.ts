@@ -27,6 +27,8 @@ export interface FixturePreset {
 export const FIXTURE_PRESETS: Record<FixtureKind, FixturePreset> = {
   light: { kind: "light", label: "LED strip light (4', 40 W)", short: "Light", hint: "Vapor-tight 4' LED strip; one lights a 12×12 stall, an aisle needs one per bay.", watts: 40, volts: 120, mountFt: 9, wall: false, sku: "elec.lightStrip" },
   floodlight: { kind: "floodlight", label: "Outdoor floodlight (50 W)", short: "Floodlight", hint: "Wall-mounted LED flood over a door or the lean-to.", watts: 50, volts: 120, mountFt: 9, wall: true, sku: "elec.flood" },
+  gooseneck: { kind: "gooseneck", label: "Gooseneck barn light (14\", 15 W LED)", short: "Gooseneck", hint: "The classic arm-and-shade barn light over a big door; one per door, centred above it.", watts: 15, volts: 120, mountFt: 10, wall: true, sku: "elec.gooseneck" },
+  lantern: { kind: "lantern", label: "Wall lantern (12 W LED)", short: "Lantern", hint: "A sconce beside an entry door at about 6'6\"; one each side of a double door.", watts: 12, volts: 120, mountFt: 6.5, wall: true, sku: "elec.lantern" },
   outlet: { kind: "outlet", label: "GFCI outlet (20 A)", short: "Outlet", hint: "Weather-resistant GFCI duplex in a PVC box, 48\" up.", watts: 180, volts: 120, mountFt: 4, wall: true, sku: "elec.outletGfci" },
   switch: { kind: "switch", label: "Light switch", short: "Switch", hint: "Beside each door you walk through; 48\" up.", watts: 0, volts: 120, mountFt: 4, wall: true, sku: "elec.switch" },
   panel: { kind: "panel", label: "Sub-panel", short: "Panel", hint: "Breaker panel fed from the house. Keep 30\" wide × 36\" deep clear in front.", watts: 0, volts: 240, mountFt: 5, wall: true, sku: "elec.panel" },
@@ -37,7 +39,10 @@ export const FIXTURE_PRESETS: Record<FixtureKind, FixturePreset> = {
 
 export const FIXTURE_KINDS = Object.keys(FIXTURE_PRESETS) as FixtureKind[];
 /** Kinds offered by the plan tool (the panel is placed once, via its own button). */
-export const PLACEABLE_FIXTURE_KINDS: FixtureKind[] = ["light", "outlet", "switch", "fan", "waterer", "heater", "floodlight", "panel"];
+export const PLACEABLE_FIXTURE_KINDS: FixtureKind[] = ["light", "outlet", "switch", "fan", "waterer", "heater", "floodlight", "gooseneck", "lantern", "panel"];
+
+/** Fixture kinds that are lights (switched, counted on lighting circuits). */
+export const LIGHT_KINDS: FixtureKind[] = ["light", "floodlight", "gooseneck", "lantern"];
 
 const GRID_FT = 0.5;
 
@@ -267,7 +272,7 @@ export function rotateFixture(model: BuildingModel, id: string): BuildingModel {
 export function switchedLights(model: BuildingModel, switchId: string): ElectricalFixture[] {
   const switches = model.electrical.fixtures.filter((f) => f.kind === "switch");
   return model.electrical.fixtures.filter((f) => {
-    if (f.kind !== "light" && f.kind !== "floodlight") return false;
+    if (!LIGHT_KINDS.includes(f.kind)) return false;
     if (f.switchId) return f.switchId === switchId;
     let best: ElectricalFixture | null = null;
     let bd = Infinity;

@@ -7,7 +7,7 @@ import type { BuildingModel, OpeningType } from "@/lib/model/schema";
 import { formatFtIn } from "@/lib/units";
 import { actualFt, stockLength, TREATMENT_LABEL, boardFeet } from "@/rules/materials/lumber";
 import { getRule } from "@/rules";
-import { Field, inputClass, Section } from "@/components/ui/Field";
+import { Field, inputClass, Section, Toggle } from "@/components/ui/Field";
 import { FtInput } from "@/components/ui/FtInput";
 import { Button } from "@/components/ui/Button";
 import { DockHeader, DockBody } from "@/components/editor/Dock";
@@ -52,6 +52,7 @@ function OpeningInspector({ id }: { id: string }) {
   const removeOpening = useProjectStore((s) => s.removeOpening);
   const flip = useProjectStore((s) => s.flipOpeningSwing);
   const center = useProjectStore((s) => s.centerOpening);
+  const setAwning = useProjectStore((s) => s.setAwning);
   const o = model.openings.find((x) => x.id === id);
   if (!o) return null;
   const wall = model.walls.find((w) => w.id === o.wallId);
@@ -151,6 +152,30 @@ function OpeningInspector({ id }: { id: string }) {
             </Field>
           ) : null}
         </Section>
+        {!isWindow ? (
+          <Section title="Awning">
+            <Toggle checked={!!o.awning} onChange={(v) => setAwning(o.id, v ? {} : null)} label="Bracketed roof over this door" hint="A small shed roof on knee brackets, like the photo; sticks out 3' (4' over a wide door)." testId="opening-awning" />
+            {o.awning ? (
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Sticks out">
+                  <select className={inputClass} value={o.awning.depthFt} onChange={(e) => setAwning(o.id, { depthFt: Number(e.target.value) })} data-testid="awning-depth">
+                    {[2, 2.5, 3, 3.5, 4, 5].map((d) => (
+                      <option key={d} value={d}>
+                        {formatFtIn(d)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Brackets">
+                  <select className={inputClass} value={o.awning.brackets} onChange={(e) => setAwning(o.id, { brackets: e.target.value as "timber" | "steel" })} data-testid="awning-brackets">
+                    <option value="timber">Timber knee brackets</option>
+                    <option value="steel">Steel brackets</option>
+                  </select>
+                </Field>
+              </div>
+            ) : null}
+          </Section>
+        ) : null}
         <div className="flex flex-wrap gap-1">
           <Button className="px-2 py-1 text-xs" onClick={() => flip(o.id)} disabled={o.swing === "none" || o.swing === "biParting"}>
             Flip

@@ -96,6 +96,7 @@ test("site: runs off the stalls, fence takeoff, the barn on the map, site plan s
   // Check step knows about runs (no error-level finding for runs); Plans: the site sheet and fencing cost.
   await goStep(page, "plans");
   await expect(page.getByTestId("estimate-total")).toBeVisible();
+  await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 15_000 }); // the pack reads the saved model
   await page.getByTestId("open-blueprints").click();
   await expect(page.getByTestId("sheet-A0")).toBeVisible();
   await expect(page.getByTestId("run-schedule")).toContainText("alpaca");

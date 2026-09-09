@@ -14,6 +14,7 @@ import * as ec from "@/lib/model/electrical";
 import * as drc from "@/lib/model/drainage";
 import * as rc from "@/lib/model/runs";
 import * as fc from "@/lib/model/fences";
+import * as lk from "@/lib/model/looks";
 
 import { newId } from "@/lib/model/ids";
 
@@ -64,6 +65,13 @@ export interface ProjectState {
   growToFitZones: () => void;
   fitEnvelopeToZones: () => void;
   applyLayout: (pattern: LayoutPattern, opts?: LayoutOptions) => void;
+  setCupola: (patch: Parameters<typeof lk.setCupola>[1]) => void;
+  setTrimStyle: (style: Parameters<typeof lk.setTrimStyle>[1]) => void;
+  setWainscot: (patch: Parameters<typeof lk.setWainscot>[1]) => void;
+  setAwning: (openingId: string, awning: Parameters<typeof lk.setAwning>[2]) => void;
+  awningsOverDoors: () => void;
+  lightsOverDoors: () => void;
+  applyLook: (look: lk.LookPreset) => void;
   addRun: (input: rc.AddRunInput) => string | null;
   updateRun: (id: string, patch: Parameters<typeof rc.updateRun>[2]) => void;
   moveRun: (id: string, x: number, y: number) => void;
@@ -193,6 +201,13 @@ export const useProjectStore = create<ProjectState>()(
         growToFitZones: () => apply((m) => zc.growToFitZones(m)),
         fitEnvelopeToZones: () => apply((m) => zc.fitEnvelopeToZones(m)),
         applyLayout: (pattern, opts) => apply((m) => applyLayout(m, pattern, opts)),
+        setCupola: (patch) => apply((m) => lk.setCupola(m, patch)),
+        setTrimStyle: (style) => apply((m) => lk.setTrimStyle(m, style)),
+        setWainscot: (patch) => apply((m) => lk.setWainscot(m, patch)),
+        setAwning: (openingId, awning) => apply((m) => lk.setAwning(m, openingId, awning)),
+        awningsOverDoors: () => apply((m) => lk.awningsOverDoors(m)),
+        lightsOverDoors: () => apply((m) => lk.lightsOverDoors(m)),
+        applyLook: (look) => apply((m) => lk.applyLook(m, look)),
         addRun: (input) => {
           const id = input.id ?? newId("run");
           apply((m) => rc.addRun(m, { ...input, id }));
