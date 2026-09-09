@@ -28,6 +28,7 @@ export function OutsideStep() {
   const lightsOverDoors = useProjectStore((s) => s.lightsOverDoors);
   const applyLook = useProjectStore((s) => s.applyLook);
   const requestFit = useViewStore((s) => s.requestFit);
+  const setPreset = useViewStore((s) => s.setPreset);
   const { report } = useDerived();
   const tool = useViewStore((s) => s.tool);
   const doorKey = useViewStore((s) => s.toolDoorKey);
@@ -97,7 +98,7 @@ export function OutsideStep() {
 
         <Section title="Looks" aside={<span className="text-[11px] text-muted">roof, trim, lights</span>}>
           <div className="flex flex-wrap gap-1">
-            <Button className="px-2 py-1 text-xs" onClick={() => { applyLook("classic"); requestFit(); }} title="Cupola and weathervane, awnings with timber brackets over the doors, craftsman trim, stone wainscot, gooseneck lights, standing-seam roof" data-testid="look-classic">
+            <Button className="px-2 py-1 text-xs" onClick={() => { applyLook("classic"); setPreset("exterior"); requestFit(); }} title="Cupola and weathervane, awnings with timber brackets over the doors, craftsman trim, stone wainscot, gooseneck lights, standing-seam roof" data-testid="look-classic">
               Classic barn look
             </Button>
             <Button className="px-2 py-1 text-xs" onClick={() => applyLook("plain")} data-testid="look-plain">
@@ -106,7 +107,7 @@ export function OutsideStep() {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Cupola" hint={model.roof.cupola.enabled ? `About ${recommendedCupolaIn(ridgeLengthFt(model))}" suits a ${Math.round(ridgeLengthFt(model))}' ridge.` : "A vented cupola on the ridge, like the photo."}>
-              <select className={inputClass} value={model.roof.cupola.enabled ? String(model.roof.cupola.sizeIn) : "0"} onChange={(e) => { const v = Number(e.target.value); setCupola(v ? { enabled: true, sizeIn: v } : { enabled: false }); }} data-testid="cupola-size">
+              <select className={inputClass} value={model.roof.cupola.enabled ? String(model.roof.cupola.sizeIn) : "0"} onChange={(e) => { const v = Number(e.target.value); setCupola(v ? { enabled: true, sizeIn: v } : { enabled: false }); if (v) setPreset("exterior"); }} data-testid="cupola-size">
                 <option value="0">None</option>
                 {CUPOLA_SIZES_IN.map((s) => (
                   <option key={s} value={s}>
